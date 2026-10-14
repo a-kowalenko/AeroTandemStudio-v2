@@ -11,6 +11,8 @@ export type ThemeId =
   | "rose-blush"
   | "military-olive"
   | "military-khaki"
+  | "desert"
+  | "lavender"
   | "sky-horizon"
   | "sky-dusk"
   | "sunset"
@@ -73,6 +75,16 @@ export const THEMES: readonly ThemeMeta[] = [
     id: "military-khaki",
     base: "dark",
     labelKey: "common.labels.themeMilitaryKhaki",
+  },
+  {
+    id: "desert",
+    base: "light",
+    labelKey: "common.labels.themeDesert",
+  },
+  {
+    id: "lavender",
+    base: "light",
+    labelKey: "common.labels.themeLavender",
   },
   {
     id: "sky-horizon",

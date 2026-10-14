@@ -369,43 +369,115 @@ html.dark[data-theme="military-olive"] {
 /* Phase 55 — Military Khaki (warm sand / tan) */
 html.dark[data-theme="military-khaki"] {
   color-scheme: dark;
-  --ats-bg: #1a1812;
-  --ats-fg: #f0ebe0;
-  --ats-muted: #b0a890;
-  --ats-border: rgba(240, 235, 224, 0.16);
-  --ats-primary: #c4a35a;
-  --ats-primary-fg: #1a160c;
-  --ats-primary-soft: rgba(196, 163, 90, 0.24);
-  --ats-accent: #dcc896;
-  --ats-destructive: #a84828;
+  --ats-bg: #322a1e;
+  --ats-fg: #f7f2e8;
+  --ats-muted: #c8bca6;
+  --ats-border: rgba(247, 242, 232, 0.18);
+  --ats-primary: #d6b86e;
+  --ats-primary-fg: #1c160c;
+  --ats-primary-soft: rgba(214, 184, 110, 0.28);
+  --ats-accent: #ead6a4;
+  --ats-destructive: #ff4d4d;
   --ats-success: #8aaa44;
-  --ats-warning: #d4b040;
-  --ats-ring: rgba(196, 163, 90, 0.45);
-  --ats-card: #28241a;
-  --ats-card-elevated: #353024;
-  --ats-surface: rgba(40, 36, 26, 0.94);
-  --ats-header: rgba(24, 22, 16, 0.95);
-  --ats-sidebar: rgba(26, 24, 18, 0.95);
-  --ats-bg-glow-1: #2e2818;
-  --ats-bg-glow-2: #241c12;
-  --ats-progress-from: #c4a35a;
-  --ats-progress-to: #e8d4a0;
-  --ats-preview-stage: #100e0a;
-  --ats-scrollbar-thumb: rgba(240, 235, 224, 0.2);
-  --ats-scrollbar-thumb-hover: rgba(196, 163, 90, 0.55);
+  --ats-warning: #e0c050;
+  --ats-ring: rgba(214, 184, 110, 0.5);
+  --ats-card: #403628;
+  --ats-card-elevated: #4e4434;
+  --ats-surface: rgba(64, 54, 40, 0.94);
+  --ats-header: rgba(46, 38, 26, 0.95);
+  --ats-sidebar: rgba(50, 42, 30, 0.95);
+  --ats-bg-glow-1: #564838;
+  --ats-bg-glow-2: #463c2c;
+  --ats-progress-from: #d6b86e;
+  --ats-progress-to: #f0e0b4;
+  --ats-preview-stage: #221c14;
+  --ats-scrollbar-thumb: rgba(247, 242, 232, 0.22);
+  --ats-scrollbar-thumb-hover: rgba(214, 184, 110, 0.6);
   --ats-scrollbar-track: transparent;
 
-  --color-emerald-50: #f4f0e6;
-  --color-emerald-100: #e4dcc4;
-  --color-emerald-200: #d0c490;
-  --color-emerald-300: #b8a85a;
-  --color-emerald-400: #c4a35a;
-  --color-emerald-500: #a89048;
-  --color-emerald-600: #8a7438;
-  --color-emerald-700: #6c5a2c;
-  --color-emerald-800: #504422;
-  --color-emerald-900: #383018;
-  --color-emerald-950: #1c1810;
+  --color-emerald-50: #f8f4ea;
+  --color-emerald-100: #efe6d0;
+  --color-emerald-200: #e0d0a8;
+  --color-emerald-300: #d4bc78;
+  --color-emerald-400: #d6b86e;
+  --color-emerald-500: #c4a35a;
+  --color-emerald-600: #a88c48;
+  --color-emerald-700: #846c38;
+  --color-emerald-800: #645028;
+  --color-emerald-900: #463818;
+  --color-emerald-950: #241e12;
+}
+
+/* Desert — light sand, strong red */
+html[data-theme="desert"] {
+  color-scheme: light;
+  --ats-bg: #f2e4c4;
+  --ats-fg: #2c2416;
+  --ats-muted: #6a5840;
+  --ats-border: rgba(44, 36, 22, 0.18);
+  --ats-primary: #8a5a14;
+  --ats-primary-fg: #fffaf2;
+  --ats-primary-soft: rgba(138, 90, 20, 0.16);
+  --ats-accent: #c9a15a;
+  --ats-destructive: #b01014;
+  --ats-success: #2f7a28;
+  --ats-warning: #9a5c00;
+  --ats-ring: rgba(138, 90, 20, 0.45);
+  --ats-card: #fbf6ea;
+  --ats-card-elevated: #fffaf2;
+  --ats-surface: rgba(251, 246, 234, 0.96);
+  --ats-header: rgba(247, 237, 216, 0.96);
+  --ats-sidebar: rgba(232, 214, 174, 0.94);
+  --ats-bg-glow-1: #f6e8cc;
+  --ats-bg-glow-2: #edd9a8;
+  --ats-progress-from: #8a5a14;
+  --ats-progress-to: #d4b06a;
+  --ats-preview-stage: #2a2218;
+  --ats-scrollbar-thumb: rgba(44, 36, 22, 0.28);
+  --ats-scrollbar-thumb-hover: rgba(138, 90, 20, 0.55);
+  --ats-scrollbar-track: transparent;
+
+  --color-emerald-50: #fbf6ea;
+  --color-emerald-100: #f3e6c8;
+  --color-emerald-200: #e4d0a0;
+  --color-emerald-300: #d4b56a;
+  --color-emerald-400: #c4a04a;
+  --color-emerald-500: #a88430;
+  --color-emerald-600: #8a6818;
+  --color-emerald-700: #6e5214;
+  --color-emerald-800: #5c4318;
+  --color-emerald-900: #3e2e10;
+  --color-emerald-950: #2a1e0a;
+}
+
+/* Lavender — pale lilac, periwinkle, indigo */
+html[data-theme="lavender"] {
+  color-scheme: light;
+  --ats-bg: #f4eeff;
+  --ats-fg: #2a3054;
+  --ats-muted: #545b80;
+  --ats-border: rgba(66, 72, 116, 0.2);
+  --ats-primary: #424874;
+  --ats-primary-fg: #f4eeff;
+  --ats-primary-soft: rgba(66, 72, 116, 0.14);
+  --ats-accent: #a6b1e1;
+  --ats-destructive: #c42332;
+  --ats-success: #2a7a58;
+  --ats-warning: #9a6700;
+  --ats-ring: rgba(66, 72, 116, 0.4);
+  --ats-card: #fffcff;
+  --ats-card-elevated: #f4eeff;
+  --ats-surface: rgba(255, 252, 255, 0.96);
+  --ats-header: rgba(255, 252, 255, 0.96);
+  --ats-sidebar: rgba(220, 214, 247, 0.94);
+  --ats-bg-glow-1: #dcd6f7;
+  --ats-bg-glow-2: #e6e2f8;
+  --ats-progress-from: #424874;
+  --ats-progress-to: #a6b1e1;
+  --ats-preview-stage: #242848;
+  --ats-scrollbar-thumb: rgba(66, 72, 116, 0.28);
+  --ats-scrollbar-thumb-hover: rgba(66, 72, 116, 0.5);
+  --ats-scrollbar-track: transparent;
 }
 
 /* Phase 55+ — Sky Horizon (light sky / cloud) */
@@ -1094,7 +1166,9 @@ html[data-theme="light"] .ats-liquid-glass,
 html[data-theme="dark"] .ats-liquid-glass,
 html[data-theme="rose-blush"] .ats-liquid-glass,
 html[data-theme="military-olive"] .ats-liquid-glass,
-html[data-theme="military-khaki"] .ats-liquid-glass {
+html[data-theme="military-khaki"] .ats-liquid-glass,
+html[data-theme="desert"] .ats-liquid-glass,
+html[data-theme="lavender"] .ats-liquid-glass {
   background-color: var(--ats-card);
   border: 1px solid var(--ats-border);
   box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.35);
