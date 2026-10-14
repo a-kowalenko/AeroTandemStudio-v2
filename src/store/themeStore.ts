@@ -13,6 +13,10 @@ export type ThemeId =
   | "military-khaki"
   | "desert"
   | "lavender"
+  | "neon"
+  | "petal"
+  | "harbor"
+  | "ember"
   | "sky-horizon"
   | "sky-dusk"
   | "sunset"
@@ -87,6 +91,26 @@ export const THEMES: readonly ThemeMeta[] = [
     labelKey: "common.labels.themeLavender",
   },
   {
+    id: "neon",
+    base: "dark",
+    labelKey: "common.labels.themeNeon",
+  },
+  {
+    id: "petal",
+    base: "light",
+    labelKey: "common.labels.themePetal",
+  },
+  {
+    id: "harbor",
+    base: "light",
+    labelKey: "common.labels.themeHarbor",
+  },
+  {
+    id: "ember",
+    base: "dark",
+    labelKey: "common.labels.themeEmber",
+  },
+  {
     id: "sky-horizon",
     base: "light",
     labelKey: "common.labels.themeSkyHorizon",
@@ -134,6 +158,7 @@ const STORAGE_KEY = "ats-theme";
 const LEGACY_THEME_IDS: Record<string, ThemeId> = {
   "military-od": "military-olive",
   "military-camo": "military-khaki",
+  "ember-2": "ember",
 };
 
 const THEME_IDS = new Set<string>(THEMES.map((t) => t.id));

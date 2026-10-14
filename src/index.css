@@ -480,6 +480,136 @@ html[data-theme="lavender"] {
   --ats-scrollbar-track: transparent;
 }
 
+/* Neon — charcoal, cyan, hot pink */
+html.dark[data-theme="neon"] {
+  color-scheme: dark;
+  --ats-bg: #252a34;
+  --ats-fg: #eaeaea;
+  --ats-muted: #a3aab6;
+  --ats-border: rgba(234, 234, 234, 0.16);
+  --ats-primary: #08d9d6;
+  --ats-primary-fg: #252a34;
+  --ats-primary-soft: rgba(8, 217, 214, 0.2);
+  --ats-accent: #ff2e63;
+  --ats-destructive: #ff2e63;
+  --ats-success: #3dce8a;
+  --ats-warning: #f0c14a;
+  --ats-ring: rgba(8, 217, 214, 0.45);
+  --ats-card: #2e3544;
+  --ats-card-elevated: #383f50;
+  --ats-surface: rgba(46, 53, 68, 0.94);
+  --ats-header: rgba(28, 33, 43, 0.95);
+  --ats-sidebar: rgba(37, 42, 52, 0.95);
+  --ats-bg-glow-1: #0e3d3c;
+  --ats-bg-glow-2: #3a1830;
+  --ats-progress-from: #08d9d6;
+  --ats-progress-to: #ff2e63;
+  --ats-preview-stage: #141820;
+  --ats-scrollbar-thumb: rgba(234, 234, 234, 0.22);
+  --ats-scrollbar-thumb-hover: rgba(8, 217, 214, 0.55);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Petal — blush, warm paper, mint, aqua */
+html[data-theme="petal"] {
+  color-scheme: light;
+  --ats-bg: #ece2e1;
+  --ats-fg: #3c3433;
+  --ats-muted: #7a706c;
+  --ats-border: rgba(60, 52, 51, 0.16);
+  --ats-primary: #2f7578;
+  --ats-primary-fg: #f7fffe;
+  --ats-primary-soft: rgba(47, 117, 120, 0.14);
+  --ats-accent: #aee1e1;
+  --ats-destructive: #c44858;
+  --ats-success: #2f7a58;
+  --ats-warning: #9a6700;
+  --ats-ring: rgba(47, 117, 120, 0.4);
+  --ats-card: #fffbfa;
+  --ats-card-elevated: #f7f1f0;
+  --ats-surface: rgba(255, 251, 250, 0.96);
+  --ats-header: rgba(255, 251, 250, 0.96);
+  --ats-sidebar: rgba(211, 224, 220, 0.94);
+  --ats-bg-glow-1: #fcd1d1;
+  --ats-bg-glow-2: #d3e0dc;
+  --ats-progress-from: #2f7578;
+  --ats-progress-to: #aee1e1;
+  --ats-preview-stage: #2a3332;
+  --ats-scrollbar-thumb: rgba(60, 52, 51, 0.28);
+  --ats-scrollbar-thumb-hover: rgba(47, 117, 120, 0.5);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Harbor — cream, beige, dusty blue */
+html[data-theme="harbor"] {
+  color-scheme: light;
+  --ats-bg: #f5efe6;
+  --ats-fg: #2c3844;
+  --ats-muted: #6d7c88;
+  --ats-border: rgba(120, 149, 178, 0.32);
+  --ats-primary: #3f6280;
+  --ats-primary-fg: #f5efe6;
+  --ats-primary-soft: rgba(63, 98, 128, 0.14);
+  --ats-accent: #7895b2;
+  --ats-destructive: #c4453c;
+  --ats-success: #2f7a58;
+  --ats-warning: #9a6700;
+  --ats-ring: rgba(63, 98, 128, 0.4);
+  --ats-card: #fffdf8;
+  --ats-card-elevated: #f5efe6;
+  --ats-surface: rgba(255, 253, 248, 0.96);
+  --ats-header: rgba(255, 253, 248, 0.96);
+  --ats-sidebar: rgba(232, 223, 202, 0.94);
+  --ats-bg-glow-1: #e8dfca;
+  --ats-bg-glow-2: #aebdca;
+  --ats-progress-from: #3f6280;
+  --ats-progress-to: #7895b2;
+  --ats-preview-stage: #243040;
+  --ats-scrollbar-thumb: rgba(44, 56, 68, 0.28);
+  --ats-scrollbar-thumb-hover: rgba(63, 98, 128, 0.5);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Ember — slate field, charcoal plates, coral actions, wine danger buttons */
+html.dark[data-theme="ember"] {
+  color-scheme: dark;
+  --ats-bg: #30475e;
+  --ats-fg: #dddddd;
+  --ats-muted: #c5ced6;
+  --ats-border: rgba(221, 221, 221, 0.2);
+  --ats-primary: #f05454;
+  --ats-primary-fg: #1c1214;
+  --ats-primary-soft: rgba(240, 84, 84, 0.24);
+  --ats-accent: #ffb0a8;
+  --ats-destructive: #ff4d6a;
+  --ats-success: #7dcea0;
+  --ats-warning: #f0c14a;
+  --ats-ring: rgba(240, 84, 84, 0.5);
+  --ats-card: #222831;
+  --ats-card-elevated: #2c3440;
+  --ats-surface: rgba(34, 40, 49, 0.94);
+  --ats-header: rgba(26, 32, 40, 0.94);
+  --ats-sidebar: rgba(34, 40, 49, 0.94);
+  --ats-bg-glow-1: #3d5c78;
+  --ats-bg-glow-2: #5a3036;
+  --ats-progress-from: #f05454;
+  --ats-progress-to: #ffb0a8;
+  --ats-preview-stage: #161b22;
+  --ats-scrollbar-thumb: rgba(221, 221, 221, 0.28);
+  --ats-scrollbar-thumb-hover: rgba(240, 84, 84, 0.6);
+  --ats-scrollbar-track: transparent;
+}
+
+html.dark[data-theme="ember"] :is(button, a).bg-destructive {
+  background-color: #8e1e28;
+  color: #dddddd;
+}
+
+html.dark[data-theme="ember"] :is(button, a).bg-destructive:hover {
+  background-color: #a82834;
+  color: #dddddd;
+}
+
 /* Phase 55+ — Sky Horizon (light sky / cloud) */
 html[data-theme="sky-horizon"] {
   color-scheme: light;
@@ -1168,7 +1298,11 @@ html[data-theme="rose-blush"] .ats-liquid-glass,
 html[data-theme="military-olive"] .ats-liquid-glass,
 html[data-theme="military-khaki"] .ats-liquid-glass,
 html[data-theme="desert"] .ats-liquid-glass,
-html[data-theme="lavender"] .ats-liquid-glass {
+html[data-theme="lavender"] .ats-liquid-glass,
+html[data-theme="neon"] .ats-liquid-glass,
+html[data-theme="petal"] .ats-liquid-glass,
+html[data-theme="harbor"] .ats-liquid-glass,
+html[data-theme="ember"] .ats-liquid-glass {
   background-color: var(--ats-card);
   border: 1px solid var(--ats-border);
   box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.35);
