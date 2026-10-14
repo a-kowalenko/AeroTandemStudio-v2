@@ -82,6 +82,7 @@
       "themeForest": "Forest",
       "themeGraphite": "Graphite",
       "themePrussian": "Prussian",
+      "themePrussianDay": "Prussian Day",
       "themeFsz": "FSZ Oscuro",
       "themeFszLight": "FSZ Claro",
       "language": "Idioma",
@@ -179,6 +180,7 @@
           "forest": "Oscuro · Dosel",
           "graphite": "Neutral · Estudio",
           "prussian": "Negro · Ámbar",
+          "prussianDay": "Claro · Ámbar",
           "fsz": "Glass · Rojo",
           "fszLight": "Glass · Rojo"
         }

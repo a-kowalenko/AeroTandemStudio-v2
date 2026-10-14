@@ -22,6 +22,7 @@ export type ThemeId =
   | "sunset"
   | "graphite"
   | "prussian"
+  | "prussian-day"
   | "arctic"
   | "forest"
   | "fsz"
@@ -145,6 +146,11 @@ export const THEMES: readonly ThemeMeta[] = [
     id: "prussian",
     base: "dark",
     labelKey: "common.labels.themePrussian",
+  },
+  {
+    id: "prussian-day",
+    base: "light",
+    labelKey: "common.labels.themePrussianDay",
   },
   {
     id: "fsz-light",

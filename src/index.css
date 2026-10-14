@@ -832,6 +832,36 @@ html.dark[data-theme="prussian"] {
   --ats-scrollbar-track: transparent;
 }
 
+/* Prussian Day — alabaster paper, navy text, same amber primary */
+html[data-theme="prussian-day"] {
+  color-scheme: light;
+  --ats-bg: #e5e5e5;
+  --ats-fg: #14213d;
+  --ats-card: #ffffff;
+  --ats-card-elevated: #f0f0f0;
+  --ats-muted: #5a6478;
+  --ats-border: rgba(20, 33, 61, 0.16);
+  --ats-primary: #fca311;
+  --ats-primary-fg: #000000;
+  --ats-primary-soft: rgba(252, 163, 17, 0.18);
+  --ats-accent: #14213d;
+  --ats-destructive: #c04030;
+  --ats-success: #2a7a58;
+  --ats-warning: #9a6700;
+  --ats-ring: rgba(252, 163, 17, 0.4);
+  --ats-surface: rgba(255, 255, 255, 0.96);
+  --ats-header: rgba(255, 255, 255, 0.97);
+  --ats-sidebar: rgba(229, 229, 229, 0.94);
+  --ats-bg-glow-1: #dce0e8;
+  --ats-bg-glow-2: #f5e6c8;
+  --ats-progress-from: #fca311;
+  --ats-progress-to: #ffc45a;
+  --ats-preview-stage: #14213d;
+  --ats-scrollbar-thumb: rgba(20, 33, 61, 0.28);
+  --ats-scrollbar-thumb-hover: rgba(252, 163, 17, 0.5);
+  --ats-scrollbar-track: transparent;
+}
+
 /*
  * Phase 55 — FSZ (Spirit-2 liquid-glass shell tier)
  * Logo red only for destructive + progress brand bars (not primary chrome).
@@ -1325,6 +1355,7 @@ html[data-theme="fsz-light"] [role="menu"] {
 html[data-theme="light"] .ats-liquid-glass,
 html[data-theme="dark"] .ats-liquid-glass,
 html[data-theme="rose-blush"] .ats-liquid-glass,
+html[data-theme="prussian-day"] .ats-liquid-glass,
 html[data-theme="military-olive"] .ats-liquid-glass,
 html[data-theme="military-khaki"] .ats-liquid-glass,
 html[data-theme="desert"] .ats-liquid-glass,
