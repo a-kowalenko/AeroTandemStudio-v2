@@ -260,37 +260,37 @@ html.dark[data-theme="royal-flag"] {
   --ats-scrollbar-track: transparent;
 }
 
-/* Phase 55 — Rose Noir (UI chrome = cream; rose only accent/progress) */
+/* Phase 55 — Rose Noir (rose primary + accent; distinct from destructive red) */
 html.dark[data-theme="rose-noir"] {
   color-scheme: dark;
   --ats-bg: #100e10;
   --ats-fg: #faf6f7;
   --ats-muted: #c9b8be;
   --ats-border: rgba(250, 246, 247, 0.18);
-  --ats-primary: #f0e6e8;
-  --ats-primary-fg: #1a1014;
-  --ats-primary-soft: rgba(240, 230, 232, 0.16);
-  --ats-accent: #e8b8c4;
+  --ats-primary: #e87898;
+  --ats-primary-fg: #ffffff;
+  --ats-primary-soft: rgba(232, 120, 152, 0.22);
+  --ats-accent: #f8b0c4;
   --ats-destructive: #e0455c;
   --ats-success: #7ba17a;
   --ats-warning: #e0b84a;
-  --ats-ring: rgba(240, 230, 232, 0.4);
+  --ats-ring: rgba(232, 120, 152, 0.45);
   --ats-card: #1a1618;
   --ats-card-elevated: #242022;
   --ats-overlay: rgba(18, 14, 16, 0.88);
-  --ats-glass-shine: rgba(255, 240, 245, 0.1);
-  --ats-glass-tint: rgba(232, 184, 196, 0.06);
+  --ats-glass-shine: rgba(255, 240, 245, 0.12);
+  --ats-glass-tint: rgba(232, 120, 152, 0.12);
   --ats-glass-edge: rgba(250, 246, 247, 0.12);
   --ats-surface: rgba(18, 14, 16, 0.3);
   --ats-header: rgba(10, 8, 10, 0.38);
   --ats-sidebar: rgba(12, 10, 12, 0.32);
-  --ats-bg-glow-1: #2a181e;
-  --ats-bg-glow-2: #1c1018;
-  --ats-progress-from: #d4788e;
-  --ats-progress-to: #f2c4ce;
+  --ats-bg-glow-1: #4a2234;
+  --ats-bg-glow-2: #321828;
+  --ats-progress-from: #e07090;
+  --ats-progress-to: #f8c4d4;
   --ats-preview-stage: #080608;
-  --ats-scrollbar-thumb: rgba(250, 246, 247, 0.22);
-  --ats-scrollbar-thumb-hover: rgba(240, 230, 232, 0.55);
+  --ats-scrollbar-thumb: rgba(232, 120, 152, 0.35);
+  --ats-scrollbar-thumb-hover: rgba(232, 120, 152, 0.6);
   --ats-scrollbar-track: transparent;
 }
 

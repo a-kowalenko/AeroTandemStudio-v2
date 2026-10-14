@@ -94,8 +94,8 @@ export const THEME_SWATCHES: Record<ThemeId, ThemeSwatch> = {
   "rose-noir": {
     bg: "#100e10",
     surface: "#1a1618",
-    primary: "#f0e6e8",
-    accent: "#e8b8c4",
+    primary: "#e87898",
+    accent: "#f8b0c4",
   },
   "rose-blush": {
     bg: "#fdf5f7",
