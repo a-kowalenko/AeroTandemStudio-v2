@@ -80,6 +80,9 @@ export function SdDriveSelector({
       : drives[0]?.drive ?? "";
 
   const selectedInfo = drives.find((d) => d.drive === selected);
+  const selectedVolume = selectedInfo
+    ? usefulVolumeName(selectedInfo.drive, selectedInfo.volume_name)
+    : null;
   const busyPhase =
     phase === "backing_up" || phase === "clearing" || phase === "importing";
   const hasDrive = Boolean(selected);
@@ -202,10 +205,15 @@ export function SdDriveSelector({
                 />
               )}
             </span>
-            {/* Compact trigger; list items use the richer label via ItemText. */}
+            {/* Icon gap stays the original gap-1.5; volume is an extra tail. */}
             {selectedInfo ? (
-              <span className="truncate font-medium tabular-nums">
-                {compactDriveLabel(selectedInfo.drive)}
+              <span className="flex min-w-0 flex-1 items-center overflow-hidden">
+                <span className="shrink-0 font-medium tabular-nums">
+                  {compactDriveLabel(selectedInfo.drive)}
+                </span>
+                {selectedVolume ? (
+                  <span className="ats-sd-trigger-volume">{selectedVolume}</span>
+                ) : null}
               </span>
             ) : (
               <SelectValue

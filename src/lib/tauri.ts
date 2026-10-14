@@ -1723,6 +1723,16 @@ export type CleanupCacheArgs = {
   orphans_only?: boolean | null;
 };
 
+export type LocalLinkStatus = {
+  ethernet: boolean;
+  wifi: boolean;
+};
+
+/** Active cable / Wi-Fi. Virtual adapters are ignored. Both false if unknown. */
+export async function localLinkStatus(): Promise<LocalLinkStatus> {
+  return invoke<LocalLinkStatus>("local_link_status");
+}
+
 export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("get_app_info");
 }

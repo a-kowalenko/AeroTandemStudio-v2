@@ -2619,3 +2619,28 @@ input[type="password"]::-ms-clear {
     transform: none;
   }
 }
+
+/* Volume tail fills the leftover trigger width. Fade only the last edge, so short names stay solid. */
+.ats-sd-trigger-volume {
+  flex: 1 1 auto;
+  text-align: start;
+  justify-content: flex-start;
+  margin-left: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-weight: 400;
+  font-style: italic;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - 1.75rem),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - 0.75rem),
+    transparent 100%
+  );
+}

@@ -1,5 +1,6 @@
 pub mod app;
 pub mod bridge;
+pub mod netlink;
 pub mod config;
 pub mod media;
 pub mod qr;

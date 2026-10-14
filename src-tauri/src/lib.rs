@@ -1,5 +1,6 @@
 mod bridge;
 mod commands;
+mod netlink;
 mod constants;
 mod media;
 mod model;
@@ -26,6 +27,7 @@ use commands::config::{
     ensure_default_media_dirs_cmd, get_config, get_config_paths, propose_default_media_dirs_cmd,
     reload_config, reset_config, save_config, validate_kunde_cmd, ConfigState,
 };
+use commands::netlink::local_link_status;
 use commands::media::{
     clear_photo_edit_undo, clear_working_session, copy_files_to_directory, crop_photo,
     delete_working_copies, delete_working_copy, discard_photo_edit_undo_for_path,
@@ -286,6 +288,7 @@ pub fn run() {
             list_available_versions,
             install_specific_version,
             get_app_info,
+            local_link_status,
             get_recent_logs,
             get_log_min_level,
             set_log_min_level,

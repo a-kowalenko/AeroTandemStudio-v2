@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
+  Cable,
   Check,
   CheckCircle2,
   FolderOpen,
   Info,
   Languages,
   Loader2,
+  Wifi,
 } from "lucide-react";
 import { ThemePicker } from "@/components/ThemePicker";
 import { Button } from "@/components/ui/button";
@@ -22,12 +24,18 @@ import {
   applyDefaultMediaDirsSilent,
 } from "@/lib/defaultMediaDirs";
 import { composeSdPcName, isAutoSdPcName, resolveSdPcName } from "@/lib/sdPcName";
-import type { AppConfig, DefaultMediaDirKind, DefaultMediaDirsProposal } from "@/lib/tauri";
+import type {
+  AppConfig,
+  DefaultMediaDirKind,
+  DefaultMediaDirsProposal,
+  LocalLinkStatus,
+} from "@/lib/tauri";
 import {
   clearCrewRemovedName,
   crewAllNames,
   findCrewMember,
   getAppInfo,
+  localLinkStatus,
   ORT_OPTIONS,
   proposeDefaultMediaDirs,
   upsertCrewMember,
@@ -66,6 +74,64 @@ import {
 } from "@/components/ui/select";
 
 type DefaultDirDone = Partial<Record<DefaultMediaDirKind, boolean>>;
+
+function NetworkPrerequisite({ link }: { link: LocalLinkStatus | null }) {
+  const { t } = useTranslation();
+  const tiles = [
+    {
+      icon: Cable,
+      label: t("setupWizard.intro.connectionCable"),
+      connected: Boolean(link?.ethernet),
+    },
+    {
+      icon: Wifi,
+      label: t("setupWizard.intro.connectionWifi"),
+      connected: Boolean(link?.wifi),
+    },
+  ] as const;
+  return (
+    <div
+      className="rounded-xl border border-sky-400/50 bg-gradient-to-br from-sky-500/18 via-sky-500/8 to-transparent px-4 py-3.5 shadow-[inset_0_1px_0] shadow-sky-400/25 dark:border-sky-300/35 dark:from-sky-400/16 dark:via-sky-400/8"
+      role="note"
+    >
+      <p className="text-sm font-semibold text-sky-950 dark:text-sky-50">
+        {t("setupWizard.intro.connectionNetworkTitle")}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {tiles.map(({ icon: Icon, label, connected }) => (
+          <div
+            key={label}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg border px-3 py-2",
+              connected
+                ? "border-emerald-500/40 bg-emerald-500/12 dark:border-emerald-400/35 dark:bg-emerald-400/10"
+                : "border-sky-400/35 bg-background/75 dark:border-sky-300/25 dark:bg-background/35",
+            )}
+          >
+            <span
+              className={cn(
+                "flex size-8 shrink-0 items-center justify-center rounded-md",
+                connected
+                  ? "bg-emerald-500/20 text-emerald-800 dark:bg-emerald-400/20 dark:text-emerald-100"
+                  : "bg-sky-500/20 text-sky-800 dark:bg-sky-400/20 dark:text-sky-100",
+              )}
+            >
+              <Icon className="size-4" strokeWidth={2.25} aria-hidden />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">{label}</span>
+              {connected ? (
+                <span className="block text-[11px] font-medium text-emerald-800 dark:text-emerald-100">
+                  {t("setupWizard.intro.connectionConnected")}
+                </span>
+              ) : null}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function WizardOptionGroup({
   title,
@@ -356,6 +422,7 @@ export function SetupWizard({ open, onComplete }: Props) {
   const [defaultDirDone, setDefaultDirDone] = useState<DefaultDirDone>({});
   const [operatorRoles, setOperatorRoles] = useState<OperatorRoleDraft | null>(null);
   const [computerName, setComputerName] = useState("");
+  const [localLink, setLocalLink] = useState<LocalLinkStatus | null>(null);
   const stepContentRef = useRef<HTMLDivElement>(null);
   const crewNames = crewAllNames(draft?.crew_list);
 
@@ -501,6 +568,32 @@ export function SetupWizard({ open, onComplete }: Props) {
     undefined,
     phase === "done" ? "setup-wizard-celebrate" : "setup-wizard-idle",
   );
+
+  const pollingLink =
+    open &&
+    phase === "steps" &&
+    draft != null &&
+    (wizardStepsForMode(normalizeSettingsUiMode(draft.settings_ui_mode))[step] ??
+      "mode") === "connection";
+
+  useEffect(() => {
+    if (!pollingLink) return;
+    let cancelled = false;
+    async function refresh() {
+      try {
+        const next = await localLinkStatus();
+        if (!cancelled) setLocalLink(next);
+      } catch {
+        if (!cancelled) setLocalLink({ ethernet: false, wifi: false });
+      }
+    }
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [pollingLink]);
 
   if (!open || !draft) return null;
 
@@ -1548,8 +1641,10 @@ export function SetupWizard({ open, onComplete }: Props) {
                 <p className="text-sm text-foreground">
                   {t("setupWizard.intro.connectionSimple")}
                 </p>
+                <NetworkPrerequisite link={localLink} />
                 <WizardUploadServerStep
                   variant="simple"
+                  link={localLink}
                   draft={draft}
                   setDraft={(next) => setDraft(next)}
                   connectNudge={uploadConnectNudge}
@@ -1632,14 +1727,18 @@ export function SetupWizard({ open, onComplete }: Props) {
                     {t("setupWizard.upload.disabledHint")}
                   </div>
                 ) : (
-                  <WizardUploadServerStep
-                    draft={draft}
-                    setDraft={(next) => setDraft(next)}
-                    disabled={!draft.upload_to_server}
-                    connectNudge={uploadConnectNudge}
-                    onError={(message, title) => showError(message, title)}
-                    onSuccess={(message, title) => showSuccess(message, title)}
-                  />
+                  <>
+                    <NetworkPrerequisite link={localLink} />
+                    <WizardUploadServerStep
+                      link={localLink}
+                      draft={draft}
+                      setDraft={(next) => setDraft(next)}
+                      disabled={!draft.upload_to_server}
+                      connectNudge={uploadConnectNudge}
+                      onError={(message, title) => showError(message, title)}
+                      onSuccess={(message, title) => showSuccess(message, title)}
+                    />
+                  </>
                 )}
                 {fieldErrors.server_connection ? (
                   <p className="text-[11px] leading-snug text-destructive" role="alert">

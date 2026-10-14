@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2, Search } from "lucide-react";
+import { Info, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { ServerProfileEditor } from "@/components/ServerProfileEditor";
 import { applyAmsPathHintsWithCredentials } from "@/lib/amsPathHintsCredentialsFlow";
+import type { LocalLinkStatus } from "@/lib/tauri";
 import {
   bindPathHintsServerInstance,
   isPlaceholderServerUrl,
@@ -48,6 +49,8 @@ type Props = {
   connectNudge?: number;
   /** Easy wizard: discover + token + connect only. */
   variant?: "simple" | "full";
+  /** Live cable / Wi-Fi. Null until the first probe. */
+  link?: LocalLinkStatus | null;
 };
 
 export function WizardUploadServerStep({
@@ -58,6 +61,7 @@ export function WizardUploadServerStep({
   disabled = false,
   connectNudge = 0,
   variant = "full",
+  link = null,
 }: Props) {
   const { t } = useTranslation();
   const checkConnection = useServerStore((s) => s.checkConnection);
@@ -366,23 +370,33 @@ export function WizardUploadServerStep({
           </div>
 
           {searched && !discovering && candidates.length === 0 ? (
-            <div className="space-y-2 rounded-md border border-dashed border-border/80 bg-background/40 p-3">
-              <p className="text-sm text-muted">
-                {simple
-                  ? t("setupWizard.upload.noneFoundSimple")
-                  : t("setupWizard.upload.noneFound")}
-              </p>
-              {simple ? null : (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={locked}
-                  onClick={() => setMode("manual")}
-                >
-                  {t("setupWizard.upload.setupManually")}
-                </Button>
-              )}
+            <div className="flex items-start gap-2.5 rounded-md border border-amber-400/35 bg-amber-500/[0.08] px-2.5 py-2.5 dark:border-amber-400/30 dark:bg-amber-400/[0.08]">
+              <span
+                className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-100"
+                aria-hidden
+              >
+                <Info className="size-3.5" strokeWidth={2.5} />
+              </span>
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="text-sm leading-snug text-amber-950 dark:text-amber-50">
+                  {link?.wifi && !link.ethernet
+                    ? t("setupWizard.upload.noneFoundWifiOnly")
+                    : simple
+                      ? t("setupWizard.upload.noneFoundSimple")
+                      : t("setupWizard.upload.noneFound")}
+                </p>
+                {simple ? null : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={locked}
+                    onClick={() => setMode("manual")}
+                  >
+                    {t("setupWizard.upload.setupManually")}
+                  </Button>
+                )}
+              </div>
             </div>
           ) : null}
 
