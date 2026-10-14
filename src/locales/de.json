@@ -81,6 +81,7 @@
       "themeArctic": "Arctic",
       "themeForest": "Forest",
       "themeGraphite": "Graphite",
+      "themePrussian": "Prussian",
       "themeFsz": "FSZ Dunkel",
       "themeFszLight": "FSZ Hell",
       "language": "Sprache",
@@ -177,6 +178,7 @@
           "arctic": "Hell · Eis",
           "forest": "Dunkel · Canopy",
           "graphite": "Neutral · Studio",
+          "prussian": "Schwarz · Amber",
           "fsz": "Glass · Rot",
           "fszLight": "Glass · Rot"
         }

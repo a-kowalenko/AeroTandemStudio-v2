@@ -21,6 +21,7 @@ export type ThemeId =
   | "sky-dusk"
   | "sunset"
   | "graphite"
+  | "prussian"
   | "arctic"
   | "forest"
   | "fsz"
@@ -139,6 +140,11 @@ export const THEMES: readonly ThemeMeta[] = [
     id: "graphite",
     base: "dark",
     labelKey: "common.labels.themeGraphite",
+  },
+  {
+    id: "prussian",
+    base: "dark",
+    labelKey: "common.labels.themePrussian",
   },
   {
     id: "fsz-light",

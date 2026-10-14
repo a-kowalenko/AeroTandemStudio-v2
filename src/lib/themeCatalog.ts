@@ -28,6 +28,7 @@ export const THEME_GROUPS: readonly ThemeGroup[] = [
       "sky-dusk",
       "arctic",
       "graphite",
+      "prussian",
       "sunset",
       "forest",
       "royal-navy",
@@ -187,6 +188,12 @@ export const THEME_SWATCHES: Record<ThemeId, ThemeSwatch> = {
     primary: "#a8aab0",
     accent: "#c8cad0",
   },
+  prussian: {
+    bg: "#000000",
+    surface: "#14213d",
+    primary: "#fca311",
+    accent: "#e5e5e5",
+  },
   fsz: {
     bg: "#141012",
     surface: "#2e2628",
@@ -224,6 +231,7 @@ export const THEME_HINT_KEYS: Record<ThemeId, string> = {
   arctic: "settings.general.appearance.hints.arctic",
   forest: "settings.general.appearance.hints.forest",
   graphite: "settings.general.appearance.hints.graphite",
+  prussian: "settings.general.appearance.hints.prussian",
   fsz: "settings.general.appearance.hints.fsz",
   "fsz-light": "settings.general.appearance.hints.fszLight",
 };

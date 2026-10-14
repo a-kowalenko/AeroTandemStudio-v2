@@ -28,6 +28,7 @@
           "sky-dusk": 1,
           sunset: 1,
           graphite: 1,
+          prussian: 1,
           arctic: 1,
           forest: 1,
           fsz: 1,
@@ -47,6 +48,7 @@
           "sky-dusk": 1,
           sunset: 1,
           graphite: 1,
+          prussian: 1,
           forest: 1,
           fsz: 1,
         };
@@ -96,6 +98,7 @@
       html[data-theme="arctic"] { background-color: #f2f5f8; }
       html.dark[data-theme="forest"] { background-color: #0e1610; }
       html.dark[data-theme="graphite"] { background-color: #121214; }
+      html.dark[data-theme="prussian"] { background-color: #000000; }
       html.dark[data-theme="fsz"] { background-color: #141012; }
       html[data-theme="fsz-light"] { background-color: #f0eeee; }
       #boot-splash {
@@ -214,6 +217,11 @@
         --bs-bg: #121214; --bs-glow: #222228; --bs-primary: #a8aab0;
         --bs-soft: rgba(168, 170, 176, 0.2); --bs-ring: rgba(168, 170, 176, 0.28);
         --bs-muted: #9a9aa2; --bs-muted-80: rgba(154, 154, 162, 0.8); --bs-muted-70: rgba(154, 154, 162, 0.7); --bs-border: rgba(232, 232, 234, 0.14);
+      }
+      html.dark[data-theme="prussian"] #boot-splash {
+        --bs-bg: #000000; --bs-glow: #14213d; --bs-primary: #fca311;
+        --bs-soft: rgba(252, 163, 17, 0.22); --bs-ring: rgba(252, 163, 17, 0.35);
+        --bs-muted: #aeb4c0; --bs-muted-80: rgba(174, 180, 192, 0.8); --bs-muted-70: rgba(174, 180, 192, 0.7); --bs-border: rgba(229, 229, 229, 0.18);
       }
       html.dark[data-theme="fsz"] #boot-splash {
         --bs-bg: #141012; --bs-glow: #3a1820; --bs-primary: #f0ecec;
