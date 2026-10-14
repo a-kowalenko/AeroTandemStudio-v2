@@ -73,7 +73,7 @@ Release CI builds **both** targets on `macos-latest` (arm64 host):
 | Target | FFmpeg (static) | Command |
 |--------|-----------------|---------|
 | Apple Silicon | martin-riedl.de → `mac/arm64/` | `tauri build -- --target aarch64-apple-darwin` |
-| Intel | evermeet.cx → `mac/x86_64/` | `tauri build -- --target x86_64-apple-darwin` |
+| Intel | martin-riedl.de amd64 → `mac/x86_64/` | `tauri build -- --target x86_64-apple-darwin` |
 
 Do **not** copy Homebrew `ffmpeg` into the bundle — it links `/opt/homebrew` dylibs and
 breaks on other Macs (`could not parse video stream` on import).

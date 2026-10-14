@@ -17,7 +17,7 @@ export type ConnectionProbePopoverProps = {
   /** Chip / root under the titlebar — portal escapes header backdrop-filter. */
   anchorRef?: RefObject<HTMLElement | null>;
   /** Panel DOM (portaled) — for click-outside that still treats the panel as inside. */
-  panelRef?: RefObject<HTMLElement | null>;
+  panelRef?: RefObject<HTMLDivElement | null>;
   /** Auto-dismiss countdown; `null` keeps the popover open until closed manually. */
   autoCloseMs?: number | null;
   onDismiss: () => void;

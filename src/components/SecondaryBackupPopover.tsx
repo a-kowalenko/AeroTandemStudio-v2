@@ -12,7 +12,7 @@ export type SecondaryBackupPopoverProps = {
   /** Chip / root under the titlebar — portal escapes header backdrop-filter. */
   anchorRef?: RefObject<HTMLElement | null>;
   /** Panel DOM (portaled) — for click-outside that still treats the panel as inside. */
-  panelRef?: RefObject<HTMLElement | null>;
+  panelRef?: RefObject<HTMLDivElement | null>;
   compact: UploadCompactParts;
   state: string;
   filesLabel: string | null;

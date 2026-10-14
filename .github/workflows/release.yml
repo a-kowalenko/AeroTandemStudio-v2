@@ -201,7 +201,7 @@ jobs:
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
             ffmpeg_arch: arm64
-          # Intel Mac — cross-compile from arm64 runner + evermeet x86_64 FFmpeg
+          # Intel Mac — cross-compile from arm64 runner + martin-riedl amd64 FFmpeg
           - platform: macos-latest
             args: "--target x86_64-apple-darwin"
             ffmpeg_arch: x86_64

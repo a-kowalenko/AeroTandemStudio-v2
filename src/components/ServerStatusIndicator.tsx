@@ -121,8 +121,8 @@ export function ServerStatusIndicator({
   const { t } = useTranslation();
   const popoverId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const backupPanelRef = useRef<HTMLElement | null>(null);
-  const probePanelRef = useRef<HTMLElement | null>(null);
+  const backupPanelRef = useRef<HTMLDivElement | null>(null);
+  const probePanelRef = useRef<HTMLDivElement | null>(null);
   const probeSeqRef = useRef(0);
   const [retrying, setRetrying] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);

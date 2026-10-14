@@ -4,7 +4,7 @@
  * Windows: gyan.dev essentials (+ BtbN win64-gpl fallback; zip → win/ffmpeg.exe)
  * macOS:   static zips only (never Homebrew — dylibs break on other Macs)
  *          arm64 → martin-riedl.de (+ osxexperts.net fallback)
- *          x86_64 → evermeet.cx
+ *          x86_64 → martin-riedl.de amd64 (+ snapshot fallback)
  * Linux:   BtbN static GPL tarball → linux/x86_64/ffmpeg (+ fallback linux/ffmpeg)
  *
  * Usage:
@@ -34,18 +34,20 @@ const GYAN_ESSENTIALS =
 const BTBN_WIN64_GPL =
   "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
 
-/** Intel (x86_64) static macOS builds — includes VideoToolbox / libx264. */
-const EVERMEET_FFMPEG_ZIP = "https://evermeet.cx/ffmpeg/getrelease/zip";
-
 /**
- * Apple Silicon static builds (portable — no /opt/homebrew dylibs).
- * Scripting URLs: https://ffmpeg.martin-riedl.de/ (signed zips).
+ * Static macOS builds (portable — no Homebrew dylibs).
+ * Scripting URLs: https://ffmpeg.martin-riedl.de/
+ * evermeet.cx getrelease/zip returns HTTP 410 — do not use.
  */
+const MARTIN_RIEDL_AMD64_RELEASE =
+  "https://ffmpeg.martin-riedl.de/redirect/latest/macos/amd64/release/ffmpeg.zip";
+const MARTIN_RIEDL_AMD64_SNAPSHOT =
+  "https://ffmpeg.martin-riedl.de/redirect/latest/macos/amd64/snapshot/ffmpeg.zip";
 const MARTIN_RIEDL_ARM64_RELEASE =
   "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip";
 const MARTIN_RIEDL_ARM64_SNAPSHOT =
   "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/snapshot/ffmpeg.zip";
-/** Fallback if martin-riedl is unreachable. */
+/** Fallback if martin-riedl is unreachable (arm64 only). */
 const OSXEXPERTS_ARM64_ZIP = "https://www.osxexperts.net/ffmpeg81arm.zip";
 
 /**
@@ -180,13 +182,7 @@ async function installMacFromZip(url, archDest, fallback, label) {
   }
 }
 
-async function installMacArm64(archDest, fallback) {
-  const sources = [
-    [MARTIN_RIEDL_ARM64_RELEASE, "martin-riedl arm64 release"],
-    [MARTIN_RIEDL_ARM64_SNAPSHOT, "martin-riedl arm64 snapshot"],
-    [OSXEXPERTS_ARM64_ZIP, "osxexperts.net ffmpeg81arm"],
-  ];
-
+async function installMacFromSources(archDest, fallback, archLabel, sources) {
   let lastErr;
   for (const [url, label] of sources) {
     try {
@@ -194,13 +190,28 @@ async function installMacArm64(archDest, fallback) {
       return;
     } catch (err) {
       lastErr = err;
-      console.warn(`arm64 FFmpeg source failed (${label}): ${err.message}`);
+      console.warn(`${archLabel} FFmpeg source failed (${label}): ${err.message}`);
     }
   }
   throw new Error(
-    `Could not download static arm64 FFmpeg. Last error: ${lastErr?.message ?? "unknown"}. ` +
-      "Place a portable binary at resources/ffmpeg/mac/arm64/ffmpeg manually.",
+    `Could not download static ${archLabel} FFmpeg. Last error: ${lastErr?.message ?? "unknown"}. ` +
+      `Place a portable binary at resources/ffmpeg/mac/${archLabel === "arm64" ? "arm64" : "x86_64"}/ffmpeg manually.`,
   );
+}
+
+async function installMacArm64(archDest, fallback) {
+  await installMacFromSources(archDest, fallback, "arm64", [
+    [MARTIN_RIEDL_ARM64_RELEASE, "martin-riedl arm64 release"],
+    [MARTIN_RIEDL_ARM64_SNAPSHOT, "martin-riedl arm64 snapshot"],
+    [OSXEXPERTS_ARM64_ZIP, "osxexperts.net ffmpeg81arm"],
+  ]);
+}
+
+async function installMacAmd64(archDest, fallback) {
+  await installMacFromSources(archDest, fallback, "x86_64", [
+    [MARTIN_RIEDL_AMD64_RELEASE, "martin-riedl amd64 release"],
+    [MARTIN_RIEDL_AMD64_SNAPSHOT, "martin-riedl amd64 snapshot"],
+  ]);
 }
 
 async function installMac() {
@@ -217,12 +228,7 @@ async function installMac() {
     return;
   }
 
-  await installMacFromZip(
-    EVERMEET_FFMPEG_ZIP,
-    archDest,
-    fallback,
-    "evermeet.cx Intel static",
-  );
+  await installMacAmd64(archDest, fallback);
 }
 
 async function installWindowsFromZip(url, dest, label) {

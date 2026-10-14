@@ -45,8 +45,8 @@ xattr -dr com.apple.quarantine src-tauri/resources/ffmpeg/mac 2>/dev/null || tru
 | Arch | Source |
 |------|--------|
 | Apple Silicon (`arm64`) | `FFMPEG_MAC_ARCH=arm64 npm run download-ffmpeg` → [martin-riedl.de](https://ffmpeg.martin-riedl.de/) (fallback [osxexperts.net](https://www.osxexperts.net/)) |
-| Intel (`x86_64`) | `FFMPEG_MAC_ARCH=x86_64 npm run download-ffmpeg` → [evermeet.cx](https://evermeet.cx/ffmpeg/) |
-| Manual | evermeet (Intel) · martin-riedl / osxexperts (arm64) |
+| Intel (`x86_64`) | `FFMPEG_MAC_ARCH=x86_64 npm run download-ffmpeg` → [martin-riedl.de](https://ffmpeg.martin-riedl.de/) amd64 |
+| Manual | martin-riedl (Intel amd64 / arm64) · osxexperts (arm64 fallback) |
 
 The binary **must** include `h264_videotoolbox` (and ideally `libx264` as fallback):
 
