@@ -120,7 +120,7 @@ export function WorkflowLayout({
           }}
         />
 
-        <section className="ats-surface rounded-xl shadow-sm backdrop-blur-sm">
+        <section className="ats-surface rounded-xl shadow-sm">
           <Tabs
             value={mediaTab}
             onValueChange={(v) => setMediaTab(v === "foto" ? "foto" : "video")}

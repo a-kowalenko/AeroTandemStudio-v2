@@ -18,7 +18,14 @@ export const THEME_GROUPS: readonly ThemeGroup[] = [
   {
     id: "specials",
     labelKey: "settings.general.appearance.groups.specials",
-    themeIds: ["spirit-2", "team-spirit", "fsz-light", "fsz"],
+    themeIds: [
+      "spirit-2",
+      "team-spirit",
+      "deutschland",
+      "deutschland-dark",
+      "fsz-light",
+      "fsz",
+    ],
   },
   {
     id: "looks",
@@ -74,6 +81,18 @@ export const THEME_SWATCHES: Record<ThemeId, ThemeSwatch> = {
     surface: "#1a1a1a",
     primary: "#b59546",
     accent: "#c9a84c",
+  },
+  deutschland: {
+    bg: "#eceef1",
+    surface: "#ffffff",
+    primary: "#1a1d21",
+    accent: "#c8982e",
+  },
+  "deutschland-dark": {
+    bg: "#121418",
+    surface: "#1e2228",
+    primary: "#f2f3f5",
+    accent: "#ffcc00",
   },
   "spirit-2": {
     bg: "#080808",
@@ -219,6 +238,8 @@ export const THEME_HINT_KEYS: Record<ThemeId, string> = {
   light: "settings.general.appearance.hints.light",
   dark: "settings.general.appearance.hints.dark",
   "team-spirit": "settings.general.appearance.hints.teamSpirit",
+  deutschland: "settings.general.appearance.hints.deutschland",
+  "deutschland-dark": "settings.general.appearance.hints.deutschlandDark",
   "spirit-2": "settings.general.appearance.hints.spirit2",
   "royal-navy": "settings.general.appearance.hints.royalNavy",
   "royal-flag": "settings.general.appearance.hints.royalFlag",

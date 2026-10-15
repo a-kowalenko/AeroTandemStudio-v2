@@ -36,7 +36,7 @@ export function AppChrome({ children, actions, className }: Props) {
   return (
     <header
       className={cn(
-        "ats-header-bg sticky top-0 z-[110] flex cursor-default select-none items-stretch border-b border-border backdrop-blur-md",
+        "ats-header-bg sticky top-0 z-[110] flex cursor-default select-none items-stretch border-b border-border",
         macOverlayInset && MAC_TRAFFIC_LIGHT_INSET_CLASS,
         className,
       )}

@@ -49,6 +49,11 @@
   --ats-bg-glow-2: #d9e4f0;
   --ats-progress-from: #009d8b;
   --ats-progress-to: #2bc4ae;
+  --ats-progress-bar: linear-gradient(
+    90deg,
+    var(--ats-progress-from),
+    var(--ats-progress-to)
+  );
   --ats-preview-stage: #1a2220;
   --ats-scrollbar-size: 6px;
   --ats-scrollbar-thumb: rgba(18, 32, 28, 0.22);
@@ -79,6 +84,11 @@
   --ats-bg-glow-2: #1a2838;
   --ats-progress-from: #1ab5a0;
   --ats-progress-to: #4ad4be;
+  --ats-progress-bar: linear-gradient(
+    90deg,
+    var(--ats-progress-from),
+    var(--ats-progress-to)
+  );
   --ats-preview-stage: #0a0e0c;
   --ats-scrollbar-thumb: rgba(232, 239, 236, 0.18);
   --ats-scrollbar-thumb-hover: rgba(26, 181, 160, 0.55);
@@ -123,6 +133,109 @@ html.dark[data-theme="team-spirit"] {
   --ats-preview-stage: #050505;
   --ats-scrollbar-thumb: rgba(245, 245, 245, 0.18);
   --ats-scrollbar-thumb-hover: rgba(181, 149, 70, 0.55);
+  --ats-scrollbar-track: transparent;
+}
+
+/*
+ * Deutschland — institutional light: anthracite chrome, muted Bundesgold,
+ * red reserved for accent bars / destructive (not pink wash).
+ */
+html[data-theme="deutschland"] {
+  color-scheme: light;
+  --ats-bg: #eceef1;
+  --ats-fg: #1a1d21;
+  --ats-muted: #5c6570;
+  --ats-border: rgba(26, 29, 33, 0.11);
+  --ats-primary: #1a1d21;
+  --ats-primary-fg: #ffffff;
+  --ats-primary-soft: rgba(200, 152, 46, 0.14);
+  --ats-accent: #c8982e;
+  --ats-destructive: #a8001a;
+  --ats-success: #157a4a;
+  --ats-warning: #9a6700;
+  --ats-ring: rgba(200, 152, 46, 0.42);
+  --ats-card: #ffffff;
+  --ats-card-elevated: #f6f7f9;
+  --ats-overlay: rgba(236, 238, 241, 0.72);
+  --ats-glass-shine: rgba(255, 255, 255, 0.92);
+  --ats-glass-tint: rgba(26, 29, 33, 0.04);
+  --ats-glass-edge: rgba(26, 29, 33, 0.1);
+  --ats-glass-seam: rgba(26, 29, 33, 0.06);
+  --ats-surface: rgba(255, 255, 255, 0.94);
+  --ats-header: rgba(255, 255, 255, 0.98);
+  --ats-sidebar: rgba(248, 249, 251, 0.96);
+  --ats-panel-filter: blur(40px) saturate(1.15) brightness(1.01);
+  --ats-float-filter: blur(36px) saturate(1.1);
+  --ats-panel-shadow-shell:
+    0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 28px rgba(26, 29, 33, 0.04);
+  --ats-panel-shadow-float:
+    0 10px 32px rgba(26, 29, 33, 0.07),
+    0 1px 0 rgba(255, 255, 255, 0.95);
+  --ats-bg-glow-1: #e8e2d4;
+  --ats-bg-glow-2: #e6dfe3;
+  --ats-progress-from: #000000;
+  --ats-progress-to: #ffcc00;
+  --ats-progress-bar: linear-gradient(
+    90deg,
+    #000000 0%,
+    #dd0000 50%,
+    #ffcc00 100%
+  );
+  --ats-preview-stage: #1a1d21;
+  --ats-scrollbar-thumb: rgba(26, 29, 33, 0.22);
+  --ats-scrollbar-thumb-hover: rgba(200, 152, 46, 0.55);
+  --ats-scrollbar-track: transparent;
+}
+
+/*
+ * Deutschland Dunkel — same shell/stripe/progress principles on dark anthracite.
+ */
+html.dark[data-theme="deutschland-dark"] {
+  color-scheme: dark;
+  --ats-bg: #121418;
+  --ats-fg: #f2f3f5;
+  --ats-muted: #9aa3b0;
+  --ats-border: rgba(242, 243, 245, 0.12);
+  --ats-primary: #f2f3f5;
+  --ats-primary-fg: #121418;
+  --ats-primary-soft: rgba(255, 204, 0, 0.14);
+  --ats-accent: #ffcc00;
+  --ats-destructive: #ff4d6a;
+  --ats-success: #3dd68c;
+  --ats-warning: #fac515;
+  --ats-ring: rgba(255, 204, 0, 0.38);
+  --ats-card: #1e2228;
+  --ats-card-elevated: #262b32;
+  --ats-overlay: rgba(18, 20, 24, 0.72);
+  --ats-glass-shine: rgba(255, 255, 255, 0.08);
+  --ats-glass-tint: rgba(255, 204, 0, 0.05);
+  --ats-glass-edge: rgba(242, 243, 245, 0.12);
+  --ats-glass-seam: rgba(242, 243, 245, 0.07);
+  --ats-surface: rgba(30, 34, 40, 0.92);
+  --ats-header: rgba(24, 28, 34, 0.96);
+  --ats-sidebar: rgba(20, 24, 30, 0.94);
+  --ats-panel-filter: blur(40px) saturate(1.2) brightness(1.04);
+  --ats-float-filter: blur(36px) saturate(1.15);
+  --ats-panel-shadow-shell:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 28px rgba(0, 0, 0, 0.35);
+  --ats-panel-shadow-float:
+    0 10px 32px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --ats-bg-glow-1: #1a1214;
+  --ats-bg-glow-2: #181a10;
+  --ats-progress-from: #000000;
+  --ats-progress-to: #ffcc00;
+  --ats-progress-bar: linear-gradient(
+    90deg,
+    #000000 0%,
+    #dd0000 50%,
+    #ffcc00 100%
+  );
+  --ats-preview-stage: #0a0c10;
+  --ats-scrollbar-thumb: rgba(242, 243, 245, 0.2);
+  --ats-scrollbar-thumb-hover: rgba(255, 204, 0, 0.55);
   --ats-scrollbar-track: transparent;
 }
 
@@ -1090,10 +1203,32 @@ html[data-theme="fsz-light"] {
     0 2px 6px rgba(26, 18, 20, 0.06);
 }
 
-/* Spirit 2 + FSZ (dark/light): airy shell glass */
+html[data-theme="deutschland"] {
+  --ats-liquid-glass-shadow: var(--ats-panel-shadow-float);
+  --ats-liquid-glass-filter: var(--ats-float-filter);
+  --ats-panel-bg: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 249, 251, 0.93) 100%
+  );
+}
+
+html.dark[data-theme="deutschland-dark"] {
+  --ats-liquid-glass-shadow: var(--ats-panel-shadow-float);
+  --ats-liquid-glass-filter: var(--ats-float-filter);
+  --ats-panel-bg: linear-gradient(
+    180deg,
+    rgba(38, 43, 50, 0.98) 0%,
+    rgba(24, 28, 34, 0.94) 100%
+  );
+}
+
+/* Spirit 2 + FSZ + Deutschland: airy shell glass */
 html.dark[data-theme="spirit-2"],
 html.dark[data-theme="fsz"],
-html[data-theme="fsz-light"] {
+html[data-theme="fsz-light"],
+html[data-theme="deutschland"],
+html.dark[data-theme="deutschland-dark"] {
   --ats-liquid-glass-bg:
     linear-gradient(
       155deg,
@@ -1104,6 +1239,11 @@ html[data-theme="fsz-light"] {
     var(--ats-overlay);
   --ats-liquid-glass-filter: var(--ats-float-filter);
   --ats-liquid-glass-shadow: var(--ats-panel-shadow-float);
+}
+
+html.dark[data-theme="spirit-2"],
+html.dark[data-theme="fsz"],
+html[data-theme="fsz-light"] {
   --ats-panel-bg:
     linear-gradient(
       155deg,
@@ -1170,7 +1310,7 @@ html[data-theme="fsz-light"] main .ats-surface:not(.ats-progress-float-in):not(.
 html.dark[data-theme="spirit-2"] main .ats-surface [class*="bg-card-elevated"],
 html.dark[data-theme="fsz"] main .ats-surface [class*="bg-card-elevated"],
 html[data-theme="fsz-light"] main .ats-surface [class*="bg-card-elevated"] {
-  background-color: color-mix(in srgb, var(--ats-card) 45%, transparent) !important;
+  background-color: color-mix(in srgb, var(--ats-card) 52%, transparent) !important;
 }
 
 html.dark[data-theme="spirit-2"] .ats-sidebar-bg [class*="from-card"],
@@ -1184,7 +1324,7 @@ html.dark[data-theme="spirit-2"] .border-t.border-border.bg-card\/95,
 html.dark[data-theme="fsz"] .border-t.border-border.bg-card\/95,
 html[data-theme="fsz-light"] .border-t.border-border.bg-card\/95 {
   border-top-color: var(--ats-glass-seam) !important;
-  background-color: color-mix(in srgb, var(--ats-card) 72%, transparent) !important;
+  background-color: color-mix(in srgb, var(--ats-card) 80%, transparent) !important;
   box-shadow: none !important;
 }
 
@@ -1311,6 +1451,107 @@ html[data-theme="fsz-light"] textarea:focus-visible {
 }
 
 /*
+ * Deutschland — crisp shell, discrete Bundes stripe on header.
+ */
+html[data-theme="deutschland"] .ats-header-bg,
+html.dark[data-theme="deutschland-dark"] .ats-header-bg,
+html[data-theme="deutschland"] .ats-sidebar-bg,
+html.dark[data-theme="deutschland-dark"] .ats-sidebar-bg,
+html[data-theme="deutschland"]
+  .ats-surface:not(.ats-progress-float-in):not(.ats-progress-float-out),
+html.dark[data-theme="deutschland-dark"]
+  .ats-surface:not(.ats-progress-float-in):not(.ats-progress-float-out) {
+  background: var(--ats-panel-bg) !important;
+  -webkit-backdrop-filter: var(--ats-panel-filter) !important;
+  backdrop-filter: var(--ats-panel-filter) !important;
+  border-color: var(--ats-border) !important;
+}
+
+html[data-theme="deutschland"] .ats-sidebar-bg,
+html.dark[data-theme="deutschland-dark"] .ats-sidebar-bg {
+  box-shadow: var(--ats-panel-shadow-shell) !important;
+}
+
+html[data-theme="deutschland"] .ats-header-bg,
+html.dark[data-theme="deutschland-dark"] .ats-header-bg {
+  position: relative;
+  overflow: visible;
+  border-bottom: none !important;
+}
+
+html[data-theme="deutschland"] .ats-header-bg {
+  /* No drop shadow under titlebar — avoids a pale band between stripe and content */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark[data-theme="deutschland-dark"] .ats-header-bg {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Bundesflagge: Schwarz · Rot · Gold (links → rechts) */
+html[data-theme="deutschland"] .ats-header-bg::after,
+html.dark[data-theme="deutschland-dark"] .ats-header-bg::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Padding-box bottom + former border-b slot — no pale gap under the flag bar */
+  bottom: -3px;
+  height: 3px;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    #000000 0%,
+    #000000 33.333%,
+    #dd0000 33.333%,
+    #dd0000 66.666%,
+    #ffcc00 66.666%,
+    #ffcc00 100%
+  );
+}
+
+html[data-theme="deutschland"] main
+  .ats-surface:not(.ats-progress-float-in):not(.ats-progress-float-out),
+html.dark[data-theme="deutschland-dark"] main
+  .ats-surface:not(.ats-progress-float-in):not(.ats-progress-float-out) {
+  border-radius: 0.75rem;
+  box-shadow: var(--ats-panel-shadow-float) !important;
+}
+
+html[data-theme="deutschland"] .ats-header-bg.border-b,
+html.dark[data-theme="deutschland-dark"] .ats-header-bg.border-b {
+  border-bottom-width: 0 !important;
+  border-bottom-color: transparent !important;
+}
+
+html[data-theme="deutschland"] .ats-sidebar-bg .border-t,
+html[data-theme="deutschland"] .ats-sidebar-bg .border-b,
+html[data-theme="deutschland"] .ats-surface [class*="border-border"] {
+  border-color: rgba(26, 29, 33, 0.08) !important;
+}
+
+html.dark[data-theme="deutschland-dark"] .ats-sidebar-bg .border-t,
+html.dark[data-theme="deutschland-dark"] .ats-sidebar-bg .border-b,
+html.dark[data-theme="deutschland-dark"] .ats-surface [class*="border-border"] {
+  border-color: rgba(242, 243, 245, 0.08) !important;
+}
+
+html[data-theme="deutschland"] .ats-liquid-glass,
+html.dark[data-theme="deutschland-dark"] .ats-liquid-glass,
+html[data-theme="deutschland"] [role="dialog"],
+html.dark[data-theme="deutschland-dark"] [role="dialog"],
+html[data-theme="deutschland"] [role="listbox"],
+html.dark[data-theme="deutschland-dark"] [role="listbox"],
+html[data-theme="deutschland"] [role="menu"],
+html.dark[data-theme="deutschland-dark"] [role="menu"] {
+  background: var(--ats-panel-bg) !important;
+  -webkit-backdrop-filter: var(--ats-float-filter) !important;
+  backdrop-filter: var(--ats-float-filter) !important;
+  box-shadow: var(--ats-panel-shadow-float) !important;
+}
+
+/*
  * Liquid glass — brand skins (Spirit + FSZ dark/light + Phase 55 glass group).
  * Light / Dark / Rose Blush / Military keep solid plates.
  */
@@ -1321,6 +1562,8 @@ html.dark[data-theme="royal-flag"] .ats-liquid-glass,
 html.dark[data-theme="rose-noir"] .ats-liquid-glass,
 html.dark[data-theme="fsz"] .ats-liquid-glass,
 html[data-theme="fsz-light"] .ats-liquid-glass,
+html[data-theme="deutschland"] .ats-liquid-glass,
+html.dark[data-theme="deutschland-dark"] .ats-liquid-glass,
 html.dark[data-theme="team-spirit"] [role="dialog"],
 html.dark[data-theme="spirit-2"] [role="dialog"],
 html.dark[data-theme="royal-navy"] [role="dialog"],
@@ -1328,6 +1571,8 @@ html.dark[data-theme="royal-flag"] [role="dialog"],
 html.dark[data-theme="rose-noir"] [role="dialog"],
 html.dark[data-theme="fsz"] [role="dialog"],
 html[data-theme="fsz-light"] [role="dialog"],
+html[data-theme="deutschland"] [role="dialog"],
+html.dark[data-theme="deutschland-dark"] [role="dialog"],
 html.dark[data-theme="team-spirit"] [role="listbox"],
 html.dark[data-theme="spirit-2"] [role="listbox"],
 html.dark[data-theme="royal-navy"] [role="listbox"],
@@ -1335,13 +1580,17 @@ html.dark[data-theme="royal-flag"] [role="listbox"],
 html.dark[data-theme="rose-noir"] [role="listbox"],
 html.dark[data-theme="fsz"] [role="listbox"],
 html[data-theme="fsz-light"] [role="listbox"],
+html[data-theme="deutschland"] [role="listbox"],
+html.dark[data-theme="deutschland-dark"] [role="listbox"],
 html.dark[data-theme="team-spirit"] [role="menu"],
 html.dark[data-theme="spirit-2"] [role="menu"],
 html.dark[data-theme="royal-navy"] [role="menu"],
 html.dark[data-theme="royal-flag"] [role="menu"],
 html.dark[data-theme="rose-noir"] [role="menu"],
 html.dark[data-theme="fsz"] [role="menu"],
-html[data-theme="fsz-light"] [role="menu"] {
+html[data-theme="fsz-light"] [role="menu"],
+html[data-theme="deutschland"] [role="menu"],
+html.dark[data-theme="deutschland-dark"] [role="menu"] {
   background: var(--ats-liquid-glass-bg);
   -webkit-backdrop-filter: var(--ats-liquid-glass-filter);
   backdrop-filter: var(--ats-liquid-glass-filter);
@@ -1546,10 +1795,13 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
     inset: 0 auto 0 0;
     width: 40%;
     border-radius: inherit;
-    background: linear-gradient(
-      90deg,
-      var(--ats-progress-from, var(--ats-primary)),
-      var(--ats-progress-to, var(--ats-accent))
+    background: var(
+      --ats-progress-bar,
+      linear-gradient(
+        90deg,
+        var(--ats-progress-from, var(--ats-primary)),
+        var(--ats-progress-to, var(--ats-accent))
+      )
     );
     animation: ats-qr-scan-slide 1.1s ease-in-out infinite;
   }
@@ -2503,12 +2755,33 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
   }
 }
 
-@keyframes ats-progress-indeterminate {
+/*
+ * Indeterminate: rounded ⅓ pill slides on the track; inner spectrum counter-moves
+ * so Schwarz → Rot → Gold stays track-anchored (not squeezed into the chunk).
+ */
+.ats-progress-indeterminate-chunk {
+  animation: ats-progress-indeterminate-chunk 1.2s ease-in-out infinite;
+}
+
+.ats-progress-indeterminate-spectrum-inner {
+  animation: ats-progress-indeterminate-spectrum 1.2s ease-in-out infinite;
+}
+
+@keyframes ats-progress-indeterminate-chunk {
   0% {
     transform: translateX(-100%);
   }
   100% {
     transform: translateX(400%);
+  }
+}
+
+@keyframes ats-progress-indeterminate-spectrum {
+  0% {
+    transform: translateX(33.333%);
+  }
+  100% {
+    transform: translateX(-133.333%);
   }
 }
 

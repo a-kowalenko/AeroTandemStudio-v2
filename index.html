@@ -11,6 +11,8 @@
           light: 1,
           dark: 1,
           "team-spirit": 1,
+          deutschland: 1,
+          "deutschland-dark": 1,
           "spirit-2": 1,
           "royal-navy": 1,
           "royal-flag": 1,
@@ -51,9 +53,10 @@
           graphite: 1,
           "prussian-night": 1,
           forest: 1,
+          "deutschland-dark": 1,
           fsz: 1,
         };
-        var LEGACY = { "military-od": "military-olive", "military-camo": "military-khaki", "ember-2": "ember", prussian: "prussian-night" };
+        var LEGACY = { "military-od": "military-olive", "military-camo": "military-khaki", "ember-2": "ember", prussian: "prussian-night", "team-spirit-light": "deutschland" };
         var mode = null;
         try {
           var v = localStorage.getItem("ats-theme");
@@ -80,6 +83,8 @@
       html { background-color: #eef4f2; }
       html.dark { background-color: #0c1210; }
       html.dark[data-theme="team-spirit"] { background-color: #0a0a0a; }
+      html[data-theme="deutschland"] { background-color: #eceef1; }
+      html.dark[data-theme="deutschland-dark"] { background-color: #121418; }
       html.dark[data-theme="spirit-2"] { background-color: #080808; }
       html.dark[data-theme="royal-navy"] { background-color: #0a1220; }
       html.dark[data-theme="royal-flag"] { background-color: #0c1830; }
@@ -124,6 +129,16 @@
         --bs-bg: #0a0a0a; --bs-glow: #2a2210; --bs-primary: #b59546;
         --bs-soft: rgba(181, 149, 70, 0.16); --bs-ring: rgba(181, 149, 70, 0.25);
         --bs-muted: #a3a39a; --bs-muted-80: rgba(163, 163, 154, 0.8); --bs-muted-70: rgba(163, 163, 154, 0.7); --bs-border: rgba(245, 245, 245, 0.12);
+      }
+      html[data-theme="deutschland"] #boot-splash {
+        --bs-bg: #eceef1; --bs-glow: #e8e2d4; --bs-primary: #1a1d21;
+        --bs-soft: rgba(200, 152, 46, 0.12); --bs-ring: rgba(200, 152, 46, 0.28);
+        --bs-muted: #5c6570; --bs-muted-80: rgba(92, 101, 112, 0.8); --bs-muted-70: rgba(92, 101, 112, 0.7); --bs-border: rgba(26, 29, 33, 0.12);
+      }
+      html.dark[data-theme="deutschland-dark"] #boot-splash {
+        --bs-bg: #121418; --bs-glow: #1e2228; --bs-primary: #f2f3f5;
+        --bs-soft: rgba(255, 204, 0, 0.12); --bs-ring: rgba(255, 204, 0, 0.22);
+        --bs-muted: #9aa3b0; --bs-muted-80: rgba(154, 163, 176, 0.8); --bs-muted-70: rgba(154, 163, 176, 0.7); --bs-border: rgba(242, 243, 245, 0.12);
       }
       html.dark[data-theme="spirit-2"] #boot-splash {
         --bs-bg: #080808; --bs-glow: #2c2412; --bs-primary: #c4a052;

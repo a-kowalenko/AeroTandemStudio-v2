@@ -4,6 +4,8 @@ export type ThemeId =
   | "light"
   | "dark"
   | "team-spirit"
+  | "deutschland"
+  | "deutschland-dark"
   | "spirit-2"
   | "royal-navy"
   | "royal-flag"
@@ -51,6 +53,16 @@ export const THEMES: readonly ThemeMeta[] = [
     id: "team-spirit",
     base: "dark",
     labelKey: "common.labels.themeTeamSpirit",
+  },
+  {
+    id: "deutschland",
+    base: "light",
+    labelKey: "common.labels.themeDeutschland",
+  },
+  {
+    id: "deutschland-dark",
+    base: "dark",
+    labelKey: "common.labels.themeDeutschlandDark",
   },
   {
     id: "royal-navy",
@@ -172,6 +184,7 @@ const LEGACY_THEME_IDS: Record<string, ThemeId> = {
   "military-camo": "military-khaki",
   "ember-2": "ember",
   prussian: "prussian-night",
+  "team-spirit-light": "deutschland",
 };
 
 const THEME_IDS = new Set<string>(THEMES.map((t) => t.id));

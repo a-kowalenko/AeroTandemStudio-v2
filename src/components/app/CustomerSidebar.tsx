@@ -98,7 +98,7 @@ export function CustomerSidebar({
   const createUploadLater = uploadBlocked;
   const createUploadNow = uploadActive;
   return (
-    <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border backdrop-blur-md sm:w-[400px]">
+    <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border sm:w-[400px]">
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         <div className="border-b border-border/40 px-3 pt-1.5 pb-1.5">
           <CustomerSessionStrip disabled={sessionStripLocked} />
@@ -112,7 +112,7 @@ export function CustomerSidebar({
         </div>
       </div>
 
-      <div className="flex flex-col border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">
+      <div className="flex flex-col border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">

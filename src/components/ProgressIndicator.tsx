@@ -1,6 +1,11 @@
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import {
+  ProgressBarFill,
+  ProgressBarIndeterminate,
+  progressSpectrumInnerWidth,
+} from "@/lib/progressSpectrum";
 import { QrSegmentLiveSlot } from "./QrLiveScanStrip";
 import { alignVideoLiveThumbs } from "../lib/qrLiveLayout";
 import {
@@ -47,8 +52,9 @@ type ProgressIndicatorProps = {
   tasks?: TaskProgress[];
 };
 
-const FAST_FILL =
-  "linear-gradient(90deg, var(--ats-progress-from), var(--ats-progress-to))";
+const FAST_FILL = "var(--ats-progress-bar)";
+const FAST_FILL_SECONDARY =
+  "var(--ats-progress-bar-secondary, linear-gradient(90deg, color-mix(in srgb, var(--ats-progress-from) 70%, #fff), var(--ats-progress-to)))";
 const THOROUGH_FILL = "linear-gradient(90deg, #d97706, #f59e0b)";
 const FAST_SOLID = "var(--ats-progress-from)";
 const THOROUGH_SOLID = "#d97706";
@@ -77,41 +83,24 @@ function Bar({
   prevRef.current = clamped;
   // Large drops (e.g. video 100% → sort 0%) must not ease from the old width.
   const animateWidth = drop < 20;
-  const gradient =
-    tone === "primary"
-      ? FAST_FILL
-      : "linear-gradient(90deg, color-mix(in srgb, var(--ats-progress-from) 70%, #fff), var(--ats-progress-to))";
+  const gradient = tone === "primary" ? FAST_FILL : FAST_FILL_SECONDARY;
 
   if (indeterminate) {
     return (
-      <div className="h-2.5 overflow-hidden rounded-full bg-border/60">
-        <div
-          className="h-full w-1/3 rounded-full opacity-90"
-          style={{
-            background: gradient,
-            animation: "ats-progress-indeterminate 1.2s ease-in-out infinite",
-          }}
-        />
-      </div>
+      <ProgressBarIndeterminate
+        background={gradient}
+        opacity={tone === "primary" ? 0.9 : 0.75}
+      />
     );
   }
 
   return (
     <div className="h-2.5 overflow-hidden rounded-full bg-border/60">
-      <div
-        className={
-          tone === "primary"
-            ? animateWidth
-              ? "h-full rounded-full transition-[width] duration-300 ease-out"
-              : "h-full rounded-full"
-            : animateWidth
-              ? "h-full rounded-full opacity-90 transition-[width] duration-300 ease-out"
-              : "h-full rounded-full opacity-90"
-        }
-        style={{
-          width: `${clamped}%`,
-          background: gradient,
-        }}
+      <ProgressBarFill
+        percent={clamped}
+        background={gradient}
+        animateWidth={animateWidth}
+        opacity={tone === "primary" ? 1 : 0.9}
       />
     </div>
   );
@@ -295,20 +284,25 @@ function FileSegments({
                     }}
                   />
                 ) : isActive ? (
-                  <div
-                    className={
-                      seg.framesTotal && pace !== "prepare"
-                        ? "absolute inset-y-0 left-0 rounded-[inherit] transition-[width] duration-300 ease-out"
-                        : "absolute inset-0 animate-pulse rounded-[inherit]"
-                    }
-                    style={{
-                      width:
-                        seg.framesTotal && pace !== "prepare"
-                          ? `${framePct}%`
-                          : "100%",
-                      background: paceFill(pace, false),
-                    }}
-                  />
+                  seg.framesTotal && pace !== "prepare" ? (
+                    <div
+                      className="absolute inset-y-0 left-0 overflow-hidden rounded-[inherit] transition-[width] duration-300 ease-out"
+                      style={{ width: `${framePct}%` }}
+                    >
+                      <div
+                        className="h-full rounded-[inherit]"
+                        style={{
+                          width: progressSpectrumInnerWidth(framePct),
+                          background: paceFill(pace, false),
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      className="absolute inset-0 animate-pulse rounded-[inherit]"
+                      style={{ background: paceFill(pace, false) }}
+                    />
+                  )
                 ) : null}
               </div>
               {reservePointLabels ? (

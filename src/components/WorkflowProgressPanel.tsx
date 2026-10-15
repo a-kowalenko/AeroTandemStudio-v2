@@ -39,6 +39,7 @@ import { SessionOutcomeCard } from "./SessionOutcomeCard";
 import { Spinner } from "./Spinner";
 import { mediaKind } from "../lib/media";
 import { previewRotateCoverStyles } from "../lib/mediaPreviewRotate";
+import { ProgressBarFill } from "../lib/progressSpectrum";
 import { cn } from "../lib/utils";
 import type { WorkflowProgressStage } from "../lib/workflowProgress";
 import {
@@ -272,18 +273,19 @@ function CompactUploadBar({
         aria-valuenow={view.uploadFailedHold ? undefined : pct}
         aria-label={label}
       >
-        <div
-          className={cn(
-            "h-full rounded-full transition-[width] duration-300 ease-out",
-            view.uploadFailedHold
-              ? "bg-destructive/80"
-              : "bg-[linear-gradient(90deg,var(--ats-progress-from),var(--ats-progress-to))]",
-          )}
-          style={{
-            width: `${barWidth}%`,
-            opacity: compact.percent > 0 || view.uploadFailedHold ? 1 : 0.55,
-          }}
-        />
+        {view.uploadFailedHold ? (
+          <div
+            className="h-full rounded-full bg-destructive/80 transition-[width] duration-300 ease-out"
+            style={{ width: `${barWidth}%` }}
+          />
+        ) : (
+          <ProgressBarFill
+            percent={barWidth}
+            background="var(--ats-progress-bar)"
+            animateWidth
+            opacity={compact.percent > 0 ? 1 : 0.55}
+          />
+        )}
       </div>
     </div>
   );

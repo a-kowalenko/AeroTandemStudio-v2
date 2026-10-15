@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useAnchoredFixedPosition } from "@/hooks/useAnchoredFixedPosition";
 import type { UploadCompactParts } from "@/lib/uploadProgress";
+import { ProgressBarFill } from "@/lib/progressSpectrum";
 import { cn } from "@/lib/utils";
 
 export type SecondaryBackupPopoverProps = {
@@ -88,20 +89,24 @@ export function SecondaryBackupPopover({
           aria-valuenow={active || done ? pct : undefined}
           aria-label={t("header.connection.chipServerBackup")}
         >
-          <div
-            className={cn(
-              "h-full rounded-full transition-[width] duration-300 ease-out",
-              failed
-                ? "bg-destructive/80"
-                : cancelled
-                  ? "bg-muted"
-                  : "bg-[linear-gradient(90deg,var(--ats-progress-from),var(--ats-progress-to))]",
-            )}
-            style={{
-              width: `${barWidth}%`,
-              opacity: compact.percent > 0 || done || failed || cancelled ? 1 : 0.55,
-            }}
-          />
+          {failed ? (
+            <div
+              className="h-full rounded-full bg-destructive/80 transition-[width] duration-300 ease-out"
+              style={{ width: `${barWidth}%` }}
+            />
+          ) : cancelled ? (
+            <div
+              className="h-full rounded-full bg-muted transition-[width] duration-300 ease-out"
+              style={{ width: `${barWidth}%` }}
+            />
+          ) : (
+            <ProgressBarFill
+              percent={barWidth}
+              background="var(--ats-progress-bar)"
+              animateWidth
+              opacity={compact.percent > 0 || done ? 1 : 0.55}
+            />
+          )}
         </div>
 
         <span className="shrink-0 text-xs tabular-nums text-muted">

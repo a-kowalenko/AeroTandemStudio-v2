@@ -599,7 +599,7 @@ export function MediaDropZone({
     <section
       id={CREATE_READY_IDS.media}
       tabIndex={-1}
-      className="ats-surface space-y-3 rounded-xl p-4 shadow-sm backdrop-blur-sm outline-none"
+      className="ats-surface space-y-3 rounded-xl p-4 shadow-sm outline-none"
       aria-labelledby={dropZoneId}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">

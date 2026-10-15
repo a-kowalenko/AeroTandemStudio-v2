@@ -2904,7 +2904,8 @@ function App() {
   }
 
   return (
-    <div className="flex h-full min-h-screen flex-col text-foreground">
+    <div className="relative flex h-full min-h-screen flex-col text-foreground">
+      <div className="relative z-[1] flex min-h-0 flex-1 flex-col">
       <SplashScreen
         open={splashOpen}
         status={splashStatus}
@@ -3200,6 +3201,7 @@ function App() {
           }
         }}
       />
+      </div>
     </div>
   );
 }
