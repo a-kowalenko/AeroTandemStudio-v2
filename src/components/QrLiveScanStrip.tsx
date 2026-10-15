@@ -27,6 +27,7 @@ import {
 } from "@/lib/thumbnailQueue";
 import { videoPosterBustKey } from "@/hooks/useVideoThumbnailSrc";
 import { useVideoStore } from "@/store/videoStore";
+import { rectFromDom } from "@/lib/qrLookupThumbFlight";
 import {
   normalizeMediaPath,
   useQrScanStore,
@@ -216,6 +217,8 @@ function LiveTile({
 }) {
   const { t } = useTranslation();
   const clearLiveFrame = useQrScanStore((s) => s.clearLiveFrame);
+  const beginLookupThumbFlight = useQrScanStore((s) => s.beginLookupThumbFlight);
+  const flightHandoffKey = useQrScanStore((s) => s.lookupThumbFlight?.frameKey);
   const stage = useQrScanStore((s) => s.stage);
   const immediateScan =
     stage === "followup" ||
@@ -288,12 +291,39 @@ function LiveTile({
       setDismissRemoved(false);
       return;
     }
-    const id = window.setTimeout(
-      () => setDismissRemoved(true),
-      QR_LIVE_REMOVED_HOLD_MS,
-    );
+    const id = window.setTimeout(() => {
+      // Booking lookup: fly the carrier into the lookup thumb instead of discard-leave.
+      if (useQrScanStore.getState().lookup) {
+        const tile =
+          frameRef.current?.querySelector(".ats-qr-live-tile") ??
+          frameRef.current;
+        const start = rectFromDom(tile);
+        const path = frame.livePath.trim() || frame.mediaPath.trim();
+        if (
+          start &&
+          path &&
+          beginLookupThumbFlight({
+            frameKey: frame.key,
+            path,
+            gen: frame.gen,
+            mediaPath: frame.mediaPath,
+            start,
+          })
+        ) {
+          return;
+        }
+      }
+      setDismissRemoved(true);
+    }, QR_LIVE_REMOVED_HOLD_MS);
     return () => window.clearTimeout(id);
-  }, [presented]);
+  }, [
+    presented,
+    beginLookupThumbFlight,
+    frame.key,
+    frame.livePath,
+    frame.mediaPath,
+    frame.gen,
+  ]);
 
   useEffect(() => {
     if (presented !== "miss" && !leavingRemoved) return;
@@ -335,6 +365,9 @@ function LiveTile({
 
   if (!staying && !leaving) return null;
 
+  const handoffHidden =
+    flightHandoffKey != null && flightHandoffKey === frame.key;
+
   return (
     <div
       ref={frameRef}
@@ -346,6 +379,7 @@ function LiveTile({
         inward && "ats-qr-live-frame-end",
         shownOpen && !leaving && "is-open",
         leaving && (leavingRemoved ? "is-leaving-removed" : "is-leaving"),
+        handoffHidden && "is-lookup-handoff",
       )}
       onTransitionEnd={(e) => {
         if (!leaving) return;

@@ -3,8 +3,14 @@
 import { tr } from "@/i18n";
 import type { QrIdChip } from "@/lib/qrSuccess";
 import {
+  pickQrLookupThumb,
+  type QrLookupThumbPick,
+  type QrLookupThumbPickPreview,
+} from "@/lib/qrLookupThumb";
+import {
   useQrScanStore,
   type QrLookupIdChip,
+  type QrLookupThumb,
   type QrLookupUiPhase,
 } from "@/store/qrScanStore";
 import { useUiStore } from "@/store/uiStore";
@@ -33,6 +39,11 @@ export type QrLookupHooks = {
 
 export type QrLookupUiController = {
   hooks: QrLookupHooks;
+  /**
+   * Show the lookup row before async AMS work (cleanup may mark the carrier
+   * removed while network lookup is still starting).
+   */
+  primeLookupRow: () => void;
   /** Clear lookup row; end panel if this flow pinned busy. */
   finish: () => void;
 };
@@ -66,6 +77,32 @@ function summaryForResult(result: QrLookupResult): string {
   }
 }
 
+function toStoreThumb(pick: QrLookupThumbPick | null): QrLookupThumb | null {
+  if (!pick) return null;
+  return {
+    path: pick.path,
+    gen: pick.gen,
+    spotlight: pick.spotlight,
+    mediaPath: pick.mediaPath,
+    aspectRatio: pick.aspectRatio,
+  };
+}
+
+function resolvePinnedThumb(
+  pinned: QrLookupThumb | null,
+  sourcePath?: string | null,
+  preview?: QrLookupThumbPickPreview | null,
+): QrLookupThumb | null {
+  if (pinned) return pinned;
+  return toStoreThumb(
+    pickQrLookupThumb({
+      frames: useQrScanStore.getState().liveFrames,
+      sourcePath,
+      preview,
+    }),
+  );
+}
+
 /**
  * Drive booking-lookup status on the existing QR progress panel.
  * Opens a lightweight busy job when the scan job already ended (manual hit path).
@@ -74,6 +111,9 @@ export function createQrLookupUiController(opts: {
   highlight: string;
   /** Plain Kunden-/Booking-IDs as chips (kept across search → result). */
   idChips?: QrIdChip[];
+  sourcePath?: string | null;
+  /** Stable QR hit frame; preferred over live decode thumbs. */
+  preview?: QrLookupThumbPickPreview | null;
 }): QrLookupUiController {
   const highlight = opts.highlight.trim();
   const idChips: QrLookupIdChip[] = (opts.idChips ?? [])
@@ -82,35 +122,58 @@ export function createQrLookupUiController(opts: {
       value: c.value.trim(),
     }))
     .filter((c) => c.label && c.value);
+  // Pin before carrier leave / ensureLookupBusy clears live frames.
+  let thumb = toStoreThumb(
+    pickQrLookupThumb({
+      frames: useQrScanStore.getState().liveFrames,
+      sourcePath: opts.sourcePath,
+      preview: opts.preview,
+    }),
+  );
   let pinBusy = false;
 
+  const showSearching = () => {
+    if (useUiStore.getState().loading) {
+      useUiStore.getState().setLoading(false);
+    }
+    const store = useQrScanStore.getState();
+    thumb = resolvePinnedThumb(thumb, opts.sourcePath, opts.preview);
+    store.ensureLookupBusy();
+    pinBusy = true;
+    if (store.lookup?.phase === "searching") {
+      if (thumb && !store.lookup.thumb?.path.trim()) {
+        store.setLookup({ ...store.lookup, thumb });
+      }
+      return;
+    }
+    store.setLookup({
+      phase: "searching",
+      highlight,
+      summary: tr("ams.lookup.searching"),
+      idChips: idChips.length ? idChips : undefined,
+      thumb,
+    });
+  };
+
   return {
+    primeLookupRow: showSearching,
     hooks: {
-      onLookupStart: () => {
-        if (useUiStore.getState().loading) {
-          useUiStore.getState().setLoading(false);
-        }
-        const store = useQrScanStore.getState();
-        store.ensureLookupBusy();
-        pinBusy = true;
-        store.setLookup({
-          phase: "searching",
-          highlight,
-          summary: tr("ams.lookup.searching"),
-          idChips: idChips.length ? idChips : undefined,
-        });
-      },
+      onLookupStart: showSearching,
       onLookupResult: (result) => {
         const store = useQrScanStore.getState();
         if (!store.lookup) {
+          thumb = resolvePinnedThumb(thumb, opts.sourcePath, opts.preview);
           store.ensureLookupBusy();
           pinBusy = true;
+        } else if (!thumb && store.lookup.thumb) {
+          thumb = store.lookup.thumb;
         }
         store.setLookup({
           phase: phaseForResult(result.kind),
           highlight: (result.highlight ?? highlight).trim(),
           summary: summaryForResult(result),
           idChips: idChips.length ? idChips : undefined,
+          thumb,
         });
       },
     },

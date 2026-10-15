@@ -373,6 +373,15 @@ export async function presentQrHit(
   const lookupUi = createQrLookupUiController({
     highlight: lookupHighlight,
     idChips: kundeIdChips(input.kunde),
+    sourcePath: input.sourcePath,
+    preview: input.preview
+      ? {
+          path: input.preview.path,
+          width: input.preview.width,
+          height: input.preview.height,
+          spotlight: input.preview.spotlight,
+        }
+      : null,
   });
 
   const currentAtHit = useKundeStore.getState().kunde;
@@ -409,6 +418,7 @@ export async function presentQrHit(
   });
 
   try {
+    lookupUi.primeLookupRow();
     if (input.numericIds) {
       const numeric = await resolveQrNumericIds(
         input.kunde,

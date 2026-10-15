@@ -9,11 +9,19 @@ import {
   retainHitRemovedLiveFrames,
   settleByPathAfterHit,
 } from "@/lib/qrScanSettle";
+import { thumbAspectRatioFromRect } from "@/lib/qrLookupThumb";
+import {
+  prefersReducedMotion,
+  type QrLookupThumbFlightRect,
+  type QrLookupThumbFlightState,
+} from "@/lib/qrLookupThumbFlight";
 
 export {
   retainHitRemovedLiveFrames,
   settleByPathAfterHit,
 } from "@/lib/qrScanSettle";
+
+export type { QrLookupThumbFlightRect, QrLookupThumbFlightState };
 
 export type QrScanPhase =
   | "pending"
@@ -74,6 +82,19 @@ export type QrLookupIdChip = {
   value: string;
 };
 
+/** Still image pinned for the expanded booking-lookup row (survives strip leave). */
+export type QrLookupThumb = {
+  path: string;
+  /** Cache-bust for live JPEG slots; 0 for QrPreview files. */
+  gen: number;
+  /** Optional QR box when path comes from QrPreview. */
+  spotlight: { x: number; y: number; size: number } | null;
+  /** Source media (rotation / poster); may be empty for preview-only. */
+  mediaPath: string;
+  /** width / height (strip tile or preview). */
+  aspectRatio: number;
+};
+
 export type QrLookupUi = {
   phase: QrLookupUiPhase;
   /** Customer name (or empty); IDs prefer `idChips`. */
@@ -81,6 +102,8 @@ export type QrLookupUi = {
   summary: string;
   /** Kunden-ID / Booking-ID chips (numeric QR lookup). */
   idChips?: QrLookupIdChip[];
+  /** QR-found still; shown only when the live strip has left. */
+  thumb?: QrLookupThumb | null;
 };
 
 function patchLiveTone(
@@ -111,6 +134,11 @@ type QrScanState = {
   videoEdgeLimited: boolean;
   /** Booking lookup status shown inside the QR progress panel (not a second card). */
   lookup: QrLookupUi | null;
+  /**
+   * Strip → lookup shared-element flight. While `flying`, the carrier live
+   * frame is already gone and the lookup thumb slot is the landing target.
+   */
+  lookupThumbFlight: QrLookupThumbFlightState | null;
   begin: (
     paths: string[],
     stage?: QrScanJobStage,
@@ -132,6 +160,22 @@ type QrScanState = {
    */
   settleAfterHit: (hitPath?: string | null) => void;
   setLookup: (lookup: QrLookupUi | null) => void;
+  /**
+   * Hand the carrier thumb to the lookup slot: drop the live frame (skip CSS
+   * leave) and optionally start a FLIP flight. No-op without an active lookup.
+   * @returns true when the strip leave was claimed (caller must not animate).
+   */
+  beginLookupThumbFlight: (args: {
+    frameKey: string;
+    path: string;
+    gen: number;
+    mediaPath: string;
+    start: QrLookupThumbFlightRect;
+  }) => boolean;
+  /** After the flight clone is painted at `start`, drop the strip carrier. */
+  dropLookupThumbFlightCarrier: () => void;
+  /** Flight clone landed — reveal the real lookup thumb. */
+  completeLookupThumbFlight: () => void;
   setStage: (stage: QrScanJobStage) => void;
   setPhase: (path: string, phase: QrScanPhase) => void;
   setClipProgress: (
@@ -558,6 +602,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
   photoEdgeLimited: false,
   videoEdgeLimited: false,
   lookup: null,
+  lookupThumbFlight: null,
 
   begin: (paths, stage = "scanning", options) => {
     const unique = dedupeNormalizedPaths(paths);
@@ -577,6 +622,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       photoEdgeLimited: Boolean(options?.photoEdgeLimited),
       videoEdgeLimited: Boolean(options?.videoEdgeLimited),
       lookup: null,
+      lookupThumbFlight: null,
     });
   },
 
@@ -661,7 +707,68 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
     });
   },
 
-  setLookup: (lookup) => set({ lookup }),
+  setLookup: (lookup) =>
+    set(
+      lookup
+        ? { lookup }
+        : { lookup: null, lookupThumbFlight: null },
+    ),
+
+  beginLookupThumbFlight: (args) => {
+    const lookup = get().lookup;
+    if (!lookup) return false;
+    const key = normalizeMediaPath(args.frameKey);
+    const path = args.path.trim();
+    if (!key || !path) return false;
+
+    const aspectRatio = thumbAspectRatioFromRect(args.start);
+    const base: QrLookupThumb = {
+      path,
+      gen: Math.max(0, Math.floor(args.gen)),
+      spotlight: null,
+      mediaPath: args.mediaPath.trim(),
+      aspectRatio,
+    };
+    const thumb: QrLookupThumb = lookup.thumb?.path.trim()
+      ? { ...lookup.thumb, aspectRatio }
+      : base;
+
+    if (prefersReducedMotion()) {
+      set({
+        liveFrames: get().liveFrames.filter((f) => f.key !== key),
+        lookup: { ...lookup, thumb },
+        lookupThumbFlight: null,
+      });
+      return true;
+    }
+
+    set({
+      lookup: { ...lookup, thumb },
+      lookupThumbFlight: {
+        phase: "flying",
+        frameKey: key,
+        path,
+        gen: Math.max(0, Math.floor(args.gen)),
+        mediaPath: args.mediaPath.trim(),
+        start: args.start,
+      },
+    });
+    return true;
+  },
+
+  dropLookupThumbFlightCarrier: () => {
+    const flight = get().lookupThumbFlight;
+    if (!flight) return;
+    const key = flight.frameKey;
+    const liveFrames = get().liveFrames.filter((f) => f.key !== key);
+    if (liveFrames.length === get().liveFrames.length) return;
+    set({ liveFrames });
+  },
+
+  completeLookupThumbFlight: () => {
+    if (!get().lookupThumbFlight) return;
+    set({ lookupThumbFlight: null });
+  },
 
   setStage: (stage) => {
     const followup = stage === "followup" ? emptyFollowup() : get().followup;
@@ -826,6 +933,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       photoEdgeLimited: false,
       videoEdgeLimited: false,
       lookup: null,
+      lookupThumbFlight: null,
     }),
 
   phaseFor: (path) => get().byPath[normalizeMediaPath(path)] ?? null,

@@ -1,3 +1,4 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -20,18 +21,24 @@ import type { LucideIcon } from "lucide-react";
 import {
   cloneElement,
   isValidElement,
+  useEffect,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode,
+  type Ref,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { CreateJobPipelineStepper } from "./CreateJobPipelineStepper";
 import { UploadJobHeader } from "./UploadJobHeader";
 import { QrLiveScanStrip } from "./QrLiveScanStrip";
+import { QrLookupThumbFlightClone } from "./QrLookupThumbFlightClone";
 import { Button } from "./ui/button";
 import { SessionOutcomeCard } from "./SessionOutcomeCard";
 import { Spinner } from "./Spinner";
+import { mediaKind } from "../lib/media";
+import { previewRotateCoverStyles } from "../lib/mediaPreviewRotate";
 import { cn } from "../lib/utils";
 import type { WorkflowProgressStage } from "../lib/workflowProgress";
 import {
@@ -42,7 +49,8 @@ import type { WorkflowProgressView } from "../hooks/useWorkflowProgress";
 import { usePausableAutoDismiss } from "../hooks/usePausableAutoDismiss";
 import { CREATE_OUTCOME_HIDE_MS } from "../lib/createRunOutcome";
 import { hasQrCarrierLiveThumb } from "../lib/qrScanSettle";
-import { useQrScanStore } from "../store/qrScanStore";
+import { useQrScanStore, type QrLookupThumb } from "../store/qrScanStore";
+import { useVideoStore } from "../store/videoStore";
 import {
   bodyConcatModeLabelKey,
   bodyConcatModeShortLabelKey,
@@ -277,6 +285,73 @@ function CompactUploadBar({
   );
 }
 
+function QrLookupFoundThumb({
+  thumb,
+  targetRef,
+  invisible,
+  swapInstant,
+  showSpotlight,
+}: {
+  thumb: QrLookupThumb;
+  targetRef?: Ref<HTMLDivElement>;
+  /** Hidden while the FLIP clone is in flight (slot still laid out). */
+  invisible?: boolean;
+  /** No opacity fade after flight handoff (hard swap with clone). */
+  swapInstant?: boolean;
+  showSpotlight?: boolean;
+}) {
+  const { t } = useTranslation();
+  const path = thumb.path.trim();
+  const mediaPath = thumb.mediaPath.trim();
+  const rotateDeg = useVideoStore((s) =>
+    mediaPath && mediaKind(mediaPath) === "video"
+      ? s.getRotation(mediaPath)
+      : 0,
+  );
+  const rotate = previewRotateCoverStyles(rotateDeg);
+  const src = path
+    ? `${convertFileSrc(path)}${thumb.gen > 0 ? `?g=${thumb.gen}` : ""}`
+    : "";
+  const spot = thumb.spotlight;
+  const aspectRatio =
+    thumb.aspectRatio > 0 ? thumb.aspectRatio : 16 / 9;
+  if (!src) return null;
+  return (
+    <div
+      ref={targetRef}
+      className={cn(
+        "ats-qr-lookup-thumb shrink-0",
+        invisible && "is-awaiting-flight",
+        swapInstant && "is-landed-swap",
+      )}
+      style={{
+        ...rotate.container,
+        ["--ats-qr-lookup-thumb-ar" as string]: String(aspectRatio),
+      }}
+    >
+      <img
+        src={src}
+        alt={t("qr.spotlight.frameAlt")}
+        className="ats-qr-lookup-thumb-img"
+        style={rotate.media}
+        draggable={false}
+      />
+      {showSpotlight && spot ? (
+        <div
+          className="ats-qr-lookup-thumb-spot"
+          style={{
+            left: `${spot.x * 100}%`,
+            top: `${spot.y * 100}%`,
+            width: `${spot.size * 100}%`,
+            aspectRatio: "1",
+          }}
+          aria-hidden
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function WorkflowProgressPanel({
   view,
   onCancel,
@@ -286,9 +361,58 @@ export function WorkflowProgressPanel({
 }: Props) {
   const { t } = useTranslation();
   const qrLookup = useQrScanStore((s) => s.lookup);
+  const lookupThumbFlight = useQrScanStore((s) => s.lookupThumbFlight);
+  const completeLookupThumbFlight = useQrScanStore(
+    (s) => s.completeLookupThumbFlight,
+  );
   const carrierThumb = useQrScanStore((s) => hasQrCarrierLiveThumb(s.liveFrames));
-  /** After removed leave: collapse thumb row and let lookup fill the space. */
-  const lookupExpanded = Boolean(qrLookup) && !carrierThumb;
+  const lookupThumbFlying = lookupThumbFlight?.phase === "flying";
+  const dropLookupThumbFlightCarrier = useQrScanStore(
+    (s) => s.dropLookupThumbFlightCarrier,
+  );
+  const lookupThumbTargetRef = useRef<HTMLDivElement | null>(null);
+  const [lookupThumbRevealed, setLookupThumbRevealed] = useState(false);
+  const [lookupFlightHandoff, setLookupFlightHandoff] = useState(false);
+  /** After strip→lookup flight: stay compact (no second expand beat). */
+  const lookupLayoutExpanded =
+    Boolean(qrLookup) &&
+    !carrierThumb &&
+    !lookupThumbFlying &&
+    !lookupFlightHandoff;
+  const lookupThumb = qrLookup?.thumb?.path.trim() ? qrLookup.thumb : null;
+  /** Landing slot only during flight or after — not while thumb is still on the strip. */
+  const showLookupThumbSlot =
+    Boolean(lookupThumb) &&
+    (lookupThumbFlying ||
+      lookupThumbRevealed ||
+      (!lookupFlightHandoff && !carrierThumb));
+
+  useEffect(() => {
+    if (!qrLookup) {
+      setLookupThumbRevealed(false);
+      setLookupFlightHandoff(false);
+    }
+  }, [qrLookup]);
+
+  useEffect(() => {
+    if (lookupThumbFlight?.phase !== "flying") return;
+    setLookupFlightHandoff(true);
+    setLookupThumbRevealed(false);
+  }, [lookupThumbFlight?.frameKey, lookupThumbFlight?.phase]);
+
+  useEffect(() => {
+    if (lookupThumbFlight?.phase !== "flying") return;
+    let inner = 0;
+    const outer = window.requestAnimationFrame(() => {
+      inner = window.requestAnimationFrame(() => {
+        dropLookupThumbFlightCarrier();
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(outer);
+      window.cancelAnimationFrame(inner);
+    };
+  }, [lookupThumbFlight?.frameKey, dropLookupThumbFlightCarrier]);
   const { paused: donePaused, hoverProps: doneHover } = usePausableAutoDismiss(
     view.uploadDoneHold ? CREATE_OUTCOME_HIDE_MS : 0,
     () => onUploadDone?.(),
@@ -648,14 +772,14 @@ export function WorkflowProgressPanel({
             metricLabel={snapshot.metricLabel}
             legend={snapshot.legend}
             fileProgress={snapshot.fileProgress}
-            collapseScanChrome={lookupExpanded}
+            collapseScanChrome={Boolean(qrLookup) && !carrierThumb}
             tasks={showTasks ? view.tasks : undefined}
           />
           {qrLookup ? (
             <div
               className={cn(
                 "ats-qr-lookup",
-                lookupExpanded ? "is-expanded" : "is-compact",
+                lookupLayoutExpanded ? "is-expanded" : "is-compact",
                 qrLookup.phase === "searching" && "is-searching",
                 qrLookup.phase === "found" && "is-found",
                 qrLookup.phase === "miss" && "is-miss",
@@ -667,7 +791,7 @@ export function WorkflowProgressPanel({
               <div className="ats-qr-lookup-head">
                 {qrLookup.phase === "searching" ? (
                   <Spinner
-                    size={lookupExpanded ? 18 : 14}
+                    size={lookupLayoutExpanded ? 18 : 14}
                     className="ats-qr-lookup-icon shrink-0 border-[1.5px]"
                   />
                 ) : qrLookup.phase === "found" ? (
@@ -723,13 +847,35 @@ export function WorkflowProgressPanel({
                     </div>
                   ) : null}
                 </div>
+                {showLookupThumbSlot && lookupThumb ? (
+                  <QrLookupFoundThumb
+                    thumb={lookupThumb}
+                    targetRef={lookupThumbTargetRef}
+                    invisible={lookupThumbFlying && !lookupThumbRevealed}
+                    swapInstant={lookupThumbRevealed}
+                    showSpotlight={
+                      lookupThumbRevealed && !lookupThumbFlying
+                    }
+                  />
+                ) : null}
               </div>
               {qrLookup.phase === "searching" ? (
                 <div className="ats-qr-lookup-pulse" aria-hidden />
               ) : null}
+              {lookupThumbFlying && lookupThumbFlight ? (
+                <QrLookupThumbFlightClone
+                  flight={lookupThumbFlight}
+                  destRef={lookupThumbTargetRef}
+                  onReveal={() => setLookupThumbRevealed(true)}
+                  onComplete={() => {
+                    setLookupThumbRevealed(true);
+                    completeLookupThumbFlight();
+                  }}
+                />
+              ) : null}
             </div>
           ) : null}
-          {snapshot.detail && !lookupExpanded ? (
+          {snapshot.detail && !lookupLayoutExpanded ? (
             <p className="text-xs tabular-nums text-muted" aria-live="polite">
               {snapshot.detail}
             </p>
