@@ -816,7 +816,7 @@ export function SetupWizard({ open, onComplete }: Props) {
       const simple =
         normalizeSettingsUiMode(draft.settings_ui_mode) === "simple";
       const amsLinked = Boolean(draft.ams_bridge_last_ok_url.trim());
-      const ready = serverConnected || (simple && amsLinked);
+      const ready = simple ? amsLinked : serverConnected || amsLinked;
       if (!ready) {
         errors.server_connection = t("setupWizard.upload.connectRequired");
       }
@@ -882,7 +882,12 @@ export function SetupWizard({ open, onComplete }: Props) {
 
     setFieldErrors({});
     setSkippedSteps((prev) => new Set(prev).add(stepId));
-    setStep((s) => Math.min(s + 1, steps.length - 1));
+    const isLastStep = step >= steps.length - 1;
+    if (isLastStep) {
+      void finish({ celebrate: true });
+      return;
+    }
+    setStep((s) => s + 1);
   }
 
   function prepareForSave(markCompleted: boolean): AppConfig | null {
@@ -939,7 +944,7 @@ export function SetupWizard({ open, onComplete }: Props) {
   }
 
   function finishFromLastStep() {
-    if (!draft) return;
+    if (!draft || saving || finishing) return;
     const mode = normalizeSettingsUiMode(draft.settings_ui_mode);
     const allSteps = wizardStepsForMode(mode);
     const checks = allSteps.filter(
