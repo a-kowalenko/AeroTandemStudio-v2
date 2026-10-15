@@ -13,21 +13,28 @@ type Props = {
   value: ThemeId;
   onChange: (id: ThemeId) => void;
   className?: string;
+  /** Single column for narrow theme shelf; default two-column grid. */
+  variant?: "grid" | "compact";
 };
 
 function ThemeSwatchPreview({
   themeId,
   selected,
+  compact,
 }: {
   themeId: ThemeId;
   selected: boolean;
+  compact?: boolean;
 }) {
   const s = THEME_SWATCHES[themeId];
   const checkOnDark = themeMeta(themeId).base === "dark";
 
   return (
     <div
-      className="relative mb-2 h-14 overflow-hidden rounded-md ring-1 ring-black/10 dark:ring-white/10"
+      className={cn(
+        "relative mb-2 overflow-hidden rounded-md ring-1 ring-black/10 dark:ring-white/10",
+        compact ? "h-11" : "h-14",
+      )}
       style={{ background: s.bg }}
       aria-hidden
     >
@@ -77,8 +84,14 @@ function ThemeSwatchPreview({
   );
 }
 
-export function ThemePicker({ value, onChange, className }: Props) {
+export function ThemePicker({
+  value,
+  onChange,
+  className,
+  variant = "grid",
+}: Props) {
   const { t } = useTranslation();
+  const compact = variant === "compact";
 
   return (
     <div className={cn("space-y-4", className)}>
@@ -87,7 +100,9 @@ export function ThemePicker({ value, onChange, className }: Props) {
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
             {t(group.labelKey)}
           </p>
-          <div className="grid grid-cols-2 gap-2">
+          <div
+            className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-2")}
+          >
             {themesInGroup(group).map(({ id, labelKey }) => {
               const selected = value === id;
               return (
@@ -97,13 +112,18 @@ export function ThemePicker({ value, onChange, className }: Props) {
                   onClick={() => onChange(id)}
                   aria-pressed={selected}
                   className={cn(
-                    "rounded-xl border p-2.5 text-left transition-colors",
+                    "rounded-xl border text-left transition-colors",
+                    compact ? "p-2" : "p-2.5",
                     selected
                       ? "border-primary bg-primary-soft shadow-[0_0_0_1px_var(--ats-primary)]"
                       : "border-border bg-background hover:bg-muted/30",
                   )}
                 >
-                  <ThemeSwatchPreview themeId={id} selected={selected} />
+                  <ThemeSwatchPreview
+                    themeId={id}
+                    selected={selected}
+                    compact={compact}
+                  />
                   <div className="min-w-0 px-0.5">
                     <div
                       className={cn(

@@ -125,6 +125,8 @@ type UiState = {
   loading: boolean;
   loadingMessage: string;
   settingsOpen: boolean;
+  /** Non-modal theme shelf (header cluster); closed while settings modal is open. */
+  themePanelOpen: boolean;
   settingsTab: SettingsTab;
   settingsFocus: SettingsFocusTarget | null;
   /** Bumps so the same focus target re-triggers scroll/highlight. */
@@ -147,6 +149,8 @@ type UiState = {
   closeDialog: () => void;
   setLoading: (loading: boolean, message?: string) => void;
   setSettingsOpen: (open: boolean) => void;
+  setThemePanelOpen: (open: boolean) => void;
+  toggleThemePanel: () => void;
   openSettings: (opts?: {
     tab?: SettingsTab;
     focus?: SettingsFocusTarget;
@@ -178,6 +182,7 @@ export const useUiStore = create<UiState>((set) => ({
   loading: false,
   loadingMessage: "",
   settingsOpen: false,
+  themePanelOpen: false,
   settingsTab: "workplace",
   settingsFocus: null,
   settingsFocusNonce: 0,
@@ -233,16 +238,27 @@ export const useUiStore = create<UiState>((set) => ({
   setSettingsOpen: (open) =>
     set((state) =>
       open
-        ? { settingsOpen: true }
+        ? { settingsOpen: true, themePanelOpen: false }
         : {
             settingsOpen: false,
+            themePanelOpen: state.themePanelOpen,
             settingsFocus: null,
             settingsTab: state.settingsTab,
           },
     ),
+  setThemePanelOpen: (open) =>
+    set((state) => ({
+      themePanelOpen: open && !state.settingsOpen ? open : false,
+    })),
+  toggleThemePanel: () =>
+    set((state) => {
+      if (state.settingsOpen) return state;
+      return { themePanelOpen: !state.themePanelOpen };
+    }),
   openSettings: (opts) =>
     set((state) => ({
       settingsOpen: true,
+      themePanelOpen: false,
       settingsTab: resolveSettingsArea(opts?.tab),
       settingsFocus: opts?.focus ?? null,
       settingsFocusNonce: opts?.focus

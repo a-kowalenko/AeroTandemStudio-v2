@@ -153,6 +153,7 @@
       "appearance": {
         "title": "Darstellung",
         "description": "Design der Oberfläche (Hell, Dunkel oder Spezial).",
+        "quickAccessHint": "Themes können Sie auch über das Paletten-Symbol bei Einstellungen in der Kopfzeile wechseln — die App bleibt dabei sichtbar.",
         "groups": {
           "base": "Basis",
           "specials": "Spezial",
@@ -1106,7 +1107,9 @@
   "chrome": {
     "settings": {
       "moreTitle": "Einstellungen & mehr",
-      "quickActions": "Schnellaktionen"
+      "quickActions": "Schnellaktionen",
+      "openThemesTitle": "Darstellung / Themes",
+      "themePanelTitle": "Darstellung"
     },
     "window": {
       "minimize": "Minimieren",

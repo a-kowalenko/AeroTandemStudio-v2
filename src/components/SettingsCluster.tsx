@@ -6,11 +6,12 @@ import {
   useState,
   type FocusEvent,
 } from "react";
-import { Settings } from "lucide-react";
+import { Palette, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LogConsoleToggleButton } from "@/components/LogConsole";
 import { useLogStore } from "@/store/logStore";
+import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 import { HEADER_ICON_BTN } from "@/components/chrome/HeaderToolbar";
 
@@ -39,6 +40,8 @@ export function SettingsCluster({
   const [open, setOpen] = useState(false);
   const unreadErrors = useLogStore((s) => s.unreadErrors);
   const consoleOpen = useLogStore((s) => s.open);
+  const themePanelOpen = useUiStore((s) => s.themePanelOpen);
+  const toggleThemePanel = useUiStore((s) => s.toggleThemePanel);
 
   const clearCloseTimer = useCallback(() => {
     if (closeTimerRef.current != null) {
@@ -79,6 +82,7 @@ export function SettingsCluster({
     function onPointerDown(e: PointerEvent) {
       const root = rootRef.current;
       if (!root || !(e.target instanceof Node)) return;
+      if ((e.target as HTMLElement).closest?.("[data-ats-theme-panel]")) return;
       if (!root.contains(e.target)) collapseNow();
     }
     window.addEventListener("keydown", onKeyDown);
@@ -96,6 +100,12 @@ export function SettingsCluster({
       return;
     }
     onOpenSettings();
+  }
+
+  function handleThemesClick() {
+    if (disabled) return;
+    toggleThemePanel();
+    collapseNow();
   }
 
   function handleBlurCapture(e: FocusEvent<HTMLDivElement>) {
@@ -158,6 +168,24 @@ export function SettingsCluster({
         <div
           className="ats-settings-cluster-item"
           style={{ ["--ats-cluster-i" as string]: 0 }}
+        >
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className={cn(HEADER_ICON_BTN, "shadow-md")}
+            onClick={handleThemesClick}
+            disabled={disabled}
+            aria-label={t("chrome.settings.openThemesTitle")}
+            aria-pressed={themePanelOpen}
+            title={t("chrome.settings.openThemesTitle")}
+          >
+            <Palette className="h-3.5 w-3.5" aria-hidden />
+          </Button>
+        </div>
+        <div
+          className="ats-settings-cluster-item"
+          style={{ ["--ats-cluster-i" as string]: 1 }}
         >
           <LogConsoleToggleButton
             disabled={disabled}

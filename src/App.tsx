@@ -32,6 +32,7 @@ import { defaultEncodeProfile } from "./lib/encodeProfile";
 import { SplashScreen } from "./components/SplashScreen";
 import { AppShell } from "./components/app/AppShell";
 import { AppDialogs } from "./components/app/AppDialogs";
+import { ThemePanel } from "./components/ThemePanel";
 import { useVideoStore } from "./store/videoStore";
 import { usePhotoStore } from "./store/photoStore";
 import { useCreateOutcomeStore } from "./store/createOutcomeStore";
@@ -2957,6 +2958,8 @@ function App() {
         videoCuts={videoCuts}
         photoEdits={photoEdits}
       />
+
+      {ready && config ? <ThemePanel /> : null}
 
       <AppDialogs
         config={config}

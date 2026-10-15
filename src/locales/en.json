@@ -153,6 +153,7 @@
       "appearance": {
         "title": "Appearance",
         "description": "Interface design (light, dark, or specialty).",
+        "quickAccessHint": "You can also change themes from the palette icon next to Settings in the header — the main app stays visible.",
         "groups": {
           "base": "Basics",
           "specials": "Specials",
@@ -1106,7 +1107,9 @@
   "chrome": {
     "settings": {
       "moreTitle": "Settings & more",
-      "quickActions": "Quick actions"
+      "quickActions": "Quick actions",
+      "openThemesTitle": "Appearance / themes",
+      "themePanelTitle": "Appearance"
     },
     "window": {
       "minimize": "Minimize",

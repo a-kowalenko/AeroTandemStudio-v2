@@ -153,6 +153,7 @@
       "appearance": {
         "title": "Apariencia",
         "description": "Diseño de la interfaz (claro, oscuro o especial).",
+        "quickAccessHint": "También puedes cambiar temas con el icono de paleta junto a Configuración en la barra superior; la app principal sigue visible.",
         "groups": {
           "base": "Básicos",
           "specials": "Especiales",
@@ -1106,7 +1107,9 @@
   "chrome": {
     "settings": {
       "moreTitle": "Configuración y más",
-      "quickActions": "Acciones rápidas"
+      "quickActions": "Acciones rápidas",
+      "openThemesTitle": "Apariencia / temas",
+      "themePanelTitle": "Apariencia"
     },
     "window": {
       "minimize": "Minimizar",

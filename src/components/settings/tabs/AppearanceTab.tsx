@@ -14,6 +14,9 @@ export function AppearanceTab() {
         title={t("settings.general.appearance.title")}
         description={t("settings.general.appearance.description")}
       >
+        <p className="mb-3 text-xs leading-relaxed text-muted">
+          {t("settings.general.appearance.quickAccessHint")}
+        </p>
         <ThemePicker value={themeMode} onChange={setThemeMode} />
       </SettingsSection>
     </div>
