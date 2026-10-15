@@ -48,6 +48,10 @@ import {
 import type { WorkflowProgressView } from "../hooks/useWorkflowProgress";
 import { usePausableAutoDismiss } from "../hooks/usePausableAutoDismiss";
 import { CREATE_OUTCOME_HIDE_MS } from "../lib/createRunOutcome";
+import {
+  QR_LOOKUP_THUMB_FLIGHT_EASE,
+  QR_LOOKUP_THUMB_FLIGHT_MS,
+} from "../lib/qrLookupThumbFlight";
 import { hasQrCarrierLiveThumb } from "../lib/qrScanSettle";
 import { useQrScanStore, type QrLookupThumb } from "../store/qrScanStore";
 import { useVideoStore } from "../store/videoStore";
@@ -373,24 +377,30 @@ export function WorkflowProgressPanel({
   const lookupThumbTargetRef = useRef<HTMLDivElement | null>(null);
   const [lookupThumbRevealed, setLookupThumbRevealed] = useState(false);
   const [lookupFlightHandoff, setLookupFlightHandoff] = useState(false);
+  const [scanGlideShut, setScanGlideShut] = useState(false);
+  const lookupHandoff = lookupFlightHandoff || lookupThumbFlying;
+  const collapseScanChrome =
+    Boolean(qrLookup) &&
+    (scanGlideShut || (!carrierThumb && !lookupThumbFlying));
   /** After strip→lookup flight: stay compact (no second expand beat). */
   const lookupLayoutExpanded =
     Boolean(qrLookup) &&
     !carrierThumb &&
     !lookupThumbFlying &&
-    !lookupFlightHandoff;
+    !lookupHandoff;
   const lookupThumb = qrLookup?.thumb?.path.trim() ? qrLookup.thumb : null;
   /** Landing slot only during flight or after — not while thumb is still on the strip. */
   const showLookupThumbSlot =
     Boolean(lookupThumb) &&
     (lookupThumbFlying ||
       lookupThumbRevealed ||
-      (!lookupFlightHandoff && !carrierThumb));
+      (!lookupHandoff && !carrierThumb));
 
   useEffect(() => {
     if (!qrLookup) {
       setLookupThumbRevealed(false);
       setLookupFlightHandoff(false);
+      setScanGlideShut(false);
     }
   }, [qrLookup]);
 
@@ -400,19 +410,6 @@ export function WorkflowProgressPanel({
     setLookupThumbRevealed(false);
   }, [lookupThumbFlight?.frameKey, lookupThumbFlight?.phase]);
 
-  useEffect(() => {
-    if (lookupThumbFlight?.phase !== "flying") return;
-    let inner = 0;
-    const outer = window.requestAnimationFrame(() => {
-      inner = window.requestAnimationFrame(() => {
-        dropLookupThumbFlightCarrier();
-      });
-    });
-    return () => {
-      window.cancelAnimationFrame(outer);
-      window.cancelAnimationFrame(inner);
-    };
-  }, [lookupThumbFlight?.frameKey, dropLookupThumbFlightCarrier]);
   const { paused: donePaused, hoverProps: doneHover } = usePausableAutoDismiss(
     view.uploadDoneHold ? CREATE_OUTCOME_HIDE_MS : 0,
     () => onUploadDone?.(),
@@ -761,20 +758,32 @@ export function WorkflowProgressPanel({
             cancelling && "opacity-55",
           )}
         >
-          <QrLiveScanStrip />
-          <ProgressIndicator
-            percent={snapshot.percent}
-            label={snapshot.label}
-            indeterminate={Boolean(snapshot.indeterminate)}
-            hidePercent={Boolean(snapshot.hidePercent) || hideOverallBar}
-            hideBar={hideOverallBar}
-            metric={snapshot.metric}
-            metricLabel={snapshot.metricLabel}
-            legend={snapshot.legend}
-            fileProgress={snapshot.fileProgress}
-            collapseScanChrome={Boolean(qrLookup) && !carrierThumb}
-            tasks={showTasks ? view.tasks : undefined}
-          />
+          <div
+            className={cn(
+              "ats-qr-scan-stage space-y-2",
+              scanGlideShut && "is-gliding-shut",
+            )}
+            style={{
+              ["--ats-qr-scan-shut-ms" as string]: `${QR_LOOKUP_THUMB_FLIGHT_MS}ms`,
+              ["--ats-qr-scan-shut-ease" as string]:
+                QR_LOOKUP_THUMB_FLIGHT_EASE,
+            }}
+          >
+            <QrLiveScanStrip />
+            <ProgressIndicator
+              percent={snapshot.percent}
+              label={snapshot.label}
+              indeterminate={Boolean(snapshot.indeterminate)}
+              hidePercent={Boolean(snapshot.hidePercent) || hideOverallBar}
+              hideBar={hideOverallBar}
+              metric={snapshot.metric}
+              metricLabel={snapshot.metricLabel}
+              legend={snapshot.legend}
+              fileProgress={snapshot.fileProgress}
+              collapseScanChrome={collapseScanChrome}
+              tasks={showTasks ? view.tasks : undefined}
+            />
+          </div>
           {qrLookup ? (
             <div
               className={cn(
@@ -866,6 +875,10 @@ export function WorkflowProgressPanel({
                 <QrLookupThumbFlightClone
                   flight={lookupThumbFlight}
                   destRef={lookupThumbTargetRef}
+                  onGlideStart={() => {
+                    setScanGlideShut(true);
+                    dropLookupThumbFlightCarrier();
+                  }}
                   onReveal={() => setLookupThumbRevealed(true)}
                   onComplete={() => {
                     setLookupThumbRevealed(true);

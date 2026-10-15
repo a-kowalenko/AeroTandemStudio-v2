@@ -1,7 +1,7 @@
 /** Shared-element handoff: QR strip thumb → booking-lookup thumb slot. */
 
 /** Brief pause at strip rect before glide (lookup stays compact). */
-export const QR_LOOKUP_THUMB_FLIGHT_HOLD_MS = 100;
+export const QR_LOOKUP_THUMB_FLIGHT_HOLD_MS = 50;
 
 /** @deprecated alias — hold only, not lookup expand wait */
 export const QR_LOOKUP_THUMB_FLIGHT_SETTLE_MS = QR_LOOKUP_THUMB_FLIGHT_HOLD_MS;
@@ -10,7 +10,7 @@ export const QR_LOOKUP_THUMB_FLIGHT_SETTLE_MS = QR_LOOKUP_THUMB_FLIGHT_HOLD_MS;
 export const QR_LOOKUP_THUMB_FLIGHT_MS = 500;
 
 export const QR_LOOKUP_THUMB_FLIGHT_EASE =
-  "cubic-bezier(0.33, 1, 0.42, 1)";
+  "cubic-bezier(0.22, 1, 0.36, 1)";
 
 export type QrLookupThumbFlightRect = {
   left: number;

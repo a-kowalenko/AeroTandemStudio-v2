@@ -1899,15 +1899,36 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
   overflow: visible;
 }
 
+/* Live strip + progress chrome — shut in sync with lookup thumb flight (500ms). */
+.ats-qr-scan-stage {
+  overflow: hidden;
+  max-height: 24rem;
+  opacity: 1;
+  transition:
+    max-height var(--ats-qr-scan-shut-ms, 500ms)
+      var(--ats-qr-scan-shut-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity var(--ats-qr-scan-shut-ms, 500ms)
+      var(--ats-qr-scan-shut-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.ats-qr-scan-stage.is-gliding-shut {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Thumbs + segment bars + legend collapse together when lookup takes over. */
 .ats-qr-scan-chrome {
   overflow: hidden;
   max-height: 14rem;
   opacity: 1;
   transition:
-    max-height 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    margin 360ms cubic-bezier(0.22, 1, 0.36, 1);
+    max-height var(--ats-qr-scan-shut-ms, 500ms)
+      var(--ats-qr-scan-shut-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity var(--ats-qr-scan-shut-ms, 500ms)
+      var(--ats-qr-scan-shut-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    margin var(--ats-qr-scan-shut-ms, 500ms)
+      var(--ats-qr-scan-shut-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 .ats-qr-scan-chrome.is-collapsed {
