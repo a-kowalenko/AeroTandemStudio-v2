@@ -14,14 +14,14 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Buchungssuche: Kunde gefunden, aber nichts gebucht — Auswahl Handcam oder Outside statt Abbruch
 - Server-Status in der Kopfzeile: Verbindungstest mit Live-Ergebnis für Freigabe, Backup und Buchungssuche
-- Einstellungen → Darstellung: Theme-Auswahl mit Vorschau — Hell, Dunkel, Dark Spirit, Liquid Spirit, Royal, Rose, Military, Desert, Lavender, Neon, Petal, Harbor, Ember, Sky, Sunset, Arctic, Forest, Graphite, Prussian Day, Prussian Night und FSZ (Hell/Dunkel); auch im Setup-Assistenten
+- Einstellungen → Darstellung: Theme-Auswahl mit Vorschau — Hell, Dunkel, Dark Spirit, Liquid Spirit, Royal, Rose, Military, Desert, Lavender, Neon, Petal, Harbor, Ember, Sky, Sunset, Arctic, Forest, Graphite, Prussian Day, Prussian Night, Deutschland, Deutschland Nacht und FSZ (Hell/Dunkel); auch im Setup-Assistenten
 - Setup-Assistent → Verbindung: live sichtbar, ob Kabel oder WLAN verbunden ist; wird kein Server gefunden und nur WLAN ist da, Hinweis dass das oft das Internet-WLAN ist und Kabel zuverlässiger ist
 
 ### Verbessert
 
 - Video drehen: Drehung wird gespeichert und erst beim Erstellen angewendet — Vorschau sofort, ohne langes Neu-Kodieren des Clips
 - Erstellen mit gedrehten Clips: auch mit Intro/Outro in einem Durchgang; weniger Zwischenwartezeit
-- QR-Scan: nach Treffer räumen sich die Live-Kacheln der anderen Dateien auf; während der Kundensuche bleibt die Anzeige ruhiger
+- QR-Scan: bei Treffer gleitet das Vorschaubild von der Scan-Leiste zur Kundensuche und die Leiste klappt weg; übrige Live-Kacheln räumen sich auf — während der Kundensuche bleibt die Anzeige ruhiger
 - Netzlaufwerk: zuverlässigeres Einbinden und klarere Hinweise bei Verbindungsproblemen
 - Erstellen mit Intro: Fortschrittsschritte folgen dem tatsächlichen Stand zuverlässiger (kein vorzeitiges „fertig“)
 - Medien leeren: Buttons klarer als „Alle Videos leeren“ und „Alle Fotos leeren“
