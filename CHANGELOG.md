@@ -35,7 +35,32 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Erstellen: Video mit gedrehtem Clip friert nach dem ersten Clip nicht mehr ein (Ton lief weiter)
 
+## [0.9.0-beta.6] - 2026-10-15
 
+### Neu
+
+- Buchungssuche: Kunde gefunden, aber nichts gebucht — Auswahl Handcam oder Outside statt Abbruch
+- Server-Status in der Kopfzeile: Verbindungstest mit Live-Ergebnis für Freigabe, Backup und Buchungssuche
+- Einstellungen → Darstellung: Theme-Auswahl mit Vorschau — Hell, Dunkel, Dark Spirit, Liquid Spirit, Royal, Rose, Military, Desert, Lavender, Neon, Petal, Harbor, Ember, Sky, Sunset, Arctic, Forest, Graphite, Prussian Day, Prussian Night, Deutschland, Deutschland Nacht und FSZ (Hell/Dunkel); auch im Setup-Assistenten
+- Setup-Assistent → Verbindung: live sichtbar, ob Kabel oder WLAN verbunden ist; wird kein Server gefunden und nur WLAN ist da, Hinweis dass das oft das Internet-WLAN ist und Kabel zuverlässiger ist
+
+### Verbessert
+
+- Video drehen: Drehung wird gespeichert und erst beim Erstellen angewendet — Vorschau sofort, ohne langes Neu-Kodieren des Clips
+- Erstellen mit gedrehten Clips: auch mit Intro/Outro in einem Durchgang; weniger Zwischenwartezeit
+- QR-Scan: bei Treffer gleitet das Vorschaubild von der Scan-Leiste zur Kundensuche und die Leiste klappt weg; übrige Live-Kacheln räumen sich auf — während der Kundensuche bleibt die Anzeige ruhiger
+- Netzlaufwerk: zuverlässigeres Einbinden und klarere Hinweise bei Verbindungsproblemen
+- Erstellen mit Intro: Fortschrittsschritte folgen dem tatsächlichen Stand zuverlässiger (kein vorzeitiges „fertig“)
+- Medien leeren: Buttons klarer als „Alle Videos leeren“ und „Alle Fotos leeren“
+- Arbeitsfläche: Scrollbalken springt weniger beim Ein- und Ausblenden
+- SD-Karten-Auswahl: Name des Laufwerks steht neben dem Buchstaben
+- Darstellung: Khaki mit klarerem Kontrast
+- Darstellung: Rose Noir mit klarerem Kontrast
+- Darstellung: Desert wärmer und mit klarerem Kontrast
+
+### Behoben
+
+- Erstellen: Video mit gedrehtem Clip friert nach dem ersten Clip nicht mehr ein (Ton lief weiter)
 
 ## [0.9.0-beta.5] - 2026-10-14
 
