@@ -464,7 +464,11 @@
         "serverUrlFromProfile": "Del perfil de servidor «{{name}}».",
         "serverUrlMissing": "No hay URL de respaldo en el perfil de servidor activo. Configúrala en Servidor.",
         "setInServerProfile": "Definir URL de respaldo en el perfil",
-        "clearAfterHint": "Borra solo archivos ya respaldados — el resto se conserva."
+        "clearAfterHint": "Borra solo archivos ya respaldados — el resto se conserva.",
+        "renameWithGuest": "Renombrar respaldos con nombre del cliente",
+        "renameWithGuestHint": "Tras crear, las carpetas de respaldo SD vinculadas se renombran en local (el sello de tiempo se conserva para la limpieza automática).",
+        "serverRenameWithGuest": "Renombrar también la carpeta en el servidor",
+        "serverRenameWithGuestHint": "Aplica el nombre del cliente en el respaldo del servidor (SMB). Si el espejo en segundo plano sigue activo, el renombrado ocurre al terminar."
       },
       "import": {
         "title": "Importar y expulsar",
@@ -1635,6 +1639,20 @@
     "appendTitleWait": "Solo cuando termine la subida",
     "appendTitleBusy": "Ya hay un reenvío en curso",
     "appendTitleOk": "Agregar más medios a la misma carpeta del cliente",
+    "sdBackups": {
+      "title": "Respaldos SD",
+      "loading": "Respaldos SD…",
+      "openFolder": "Abrir carpeta",
+      "server": "Respaldo en servidor",
+      "copyRemotePath": "Copiar ruta del servidor",
+      "pathCopied": "Ruta copiada al portapapeles.",
+      "remotePathHint": "Sin acceso directo desde la app — copia la ruta y abre el recurso de respaldo configurado en el servidor.",
+      "renamedLocal": "Renombrado (local)",
+      "renamedRemote": "Renombrado (servidor)",
+      "originalName": "Originalmente: {{name}}",
+      "remoteRenameFailed": "Error al renombrar en el servidor: {{error}}",
+      "folderMissingHint": "La carpeta de respaldo SD fue eliminada o movida."
+    },
     "files": "Archivos",
     "appended": "Reenviado",
     "appendedFolder": "Reenvío {{folder}}",
@@ -2402,6 +2420,7 @@
       "secondaryBackupTitle": "Respaldo en servidor",
       "secondaryBackupCancelledTitle": "Respaldo en servidor cancelado",
       "secondaryBackupCancelledBody": "El respaldo local se conserva. La carpeta remota puede quedar incompleta.",
+      "remoteRenameFailedTitle": "Renombrado en servidor",
       "title": "Monitor SD"
     },
     "tile": {

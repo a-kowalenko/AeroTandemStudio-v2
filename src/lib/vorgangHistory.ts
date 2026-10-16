@@ -489,6 +489,29 @@ export type VorgangAppendEntry = {
   ams_error_message: string;
 };
 
+/** SD backup session folder linked at Create (Phase 56). */
+export type VorgangBackup = {
+  id: number;
+  vorgang_id: number;
+  kind: string;
+  local_path: string;
+  local_original_name: string;
+  local_renamed_at: string;
+  remote_path: string;
+  remote_original_leaf: string;
+  remote_renamed_at: string;
+  remote_rename_error: string;
+  linked_at: string;
+  /** Disk probe at list time (Phase 56D). */
+  local_missing: boolean;
+};
+
+export async function listVorgangBackups(
+  vorgangId: number,
+): Promise<VorgangBackup[]> {
+  return invoke<VorgangBackup[]>("list_vorgang_backups", { vorgangId });
+}
+
 export async function listVorgangAppends(
   vorgangId: number,
 ): Promise<VorgangAppendEntry[]> {

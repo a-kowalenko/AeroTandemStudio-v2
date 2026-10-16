@@ -464,7 +464,11 @@
         "serverUrlFromProfile": "From server profile “{{name}}”.",
         "serverUrlMissing": "No backup URL on the active server profile. Set it under Server.",
         "setInServerProfile": "Set backup URL in server profile",
-        "clearAfterHint": "Deletes only files already backed up — others stay."
+        "clearAfterHint": "Deletes only files already backed up — others stay.",
+        "renameWithGuest": "Rename backup folders with guest name",
+        "renameWithGuestHint": "After Create, linked local SD backup folders are renamed (timestamp prefix stays for auto-cleanup).",
+        "serverRenameWithGuest": "Also rename server backup folder",
+        "serverRenameWithGuestHint": "Applies the guest name on the server backup (SMB). If a background mirror is still running, rename runs automatically when it finishes."
       },
       "import": {
         "title": "Import & eject",
@@ -1635,6 +1639,20 @@
     "appendTitleWait": "Only after upload has finished",
     "appendTitleBusy": "An append is already running",
     "appendTitleOk": "Add more media to the same customer folder",
+    "sdBackups": {
+      "title": "SD backups",
+      "loading": "SD backups…",
+      "openFolder": "Open folder",
+      "server": "Server backup",
+      "copyRemotePath": "Copy server path",
+      "pathCopied": "Path copied to clipboard.",
+      "remotePathHint": "No direct access from the app — copy the path and open your configured server backup share.",
+      "renamedLocal": "Renamed (local)",
+      "renamedRemote": "Renamed (server)",
+      "originalName": "Originally: {{name}}",
+      "remoteRenameFailed": "Server rename failed: {{error}}",
+      "folderMissingHint": "SD backup folder was removed or moved."
+    },
     "files": "Files",
     "appended": "Appended",
     "appendedFolder": "Append {{folder}}",
@@ -2402,6 +2420,7 @@
       "secondaryBackupTitle": "Server backup",
       "secondaryBackupCancelledTitle": "Server backup cancelled",
       "secondaryBackupCancelledBody": "Local backup remains. Remote folder may be incomplete.",
+      "remoteRenameFailedTitle": "Server backup rename",
       "title": "SD monitor"
     },
     "tile": {

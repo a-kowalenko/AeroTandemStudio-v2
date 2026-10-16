@@ -65,6 +65,9 @@ pub struct CreateJobOptions {
     /// Numeric URL QR session: history `manual_entry_mode` → `qr_id`.
     #[serde(default)]
     pub qr_numeric_session: bool,
+    /// SD backup session folder(s) from the workflow (Phase 56); create sources may be preview temps.
+    #[serde(default)]
+    pub backup_session_paths: Vec<String>,
     #[serde(default, flatten)]
     pub video: CreateVideoOptions,
 }
@@ -86,6 +89,7 @@ impl Default for CreateJobOptions {
             ams_lookup_verified: false,
             ams_preflight_ack: false,
             qr_numeric_session: false,
+            backup_session_paths: Vec::new(),
             video: CreateVideoOptions::default(),
         }
     }

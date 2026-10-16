@@ -17,6 +17,9 @@ use crate::sd_card::monitor::{
     WorkflowProgress, EVENT_BACKUP_PROGRESS, EVENT_BACKUP_STATUS, EVENT_FILE_ENRICH_PROGRESS,
     EVENT_SD_INSERTED, EVENT_SD_REMOVED, EVENT_WORKFLOW_PROGRESS, SD_MONITOR,
 };
+use crate::sd_card::backup_remote_rename::{
+    set_remote_rename_toast, EVENT_BACKUP_REMOTE_RENAME,
+};
 use crate::sd_card::secondary_backup::{
     SecondaryBackupEvent, EVENT_SECONDARY_BACKUP, SECONDARY_BACKUP,
 };
@@ -101,6 +104,14 @@ fn wire_monitor_events(app: &AppHandle) {
 
     SECONDARY_BACKUP.set_callback(Some(Arc::new(move |event: SecondaryBackupEvent| {
         let _ = handle6.emit(EVENT_SECONDARY_BACKUP, event);
+    })));
+
+    let handle7 = app.clone();
+    set_remote_rename_toast(Some(Arc::new(move |message: String| {
+        let _ = handle7.emit(
+            EVENT_BACKUP_REMOTE_RENAME,
+            serde_json::json!({ "message": message }),
+        );
     })));
 }
 

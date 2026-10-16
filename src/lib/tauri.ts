@@ -148,6 +148,10 @@ export type AppConfig = {
   sd_backup_mode: string;
   /** Label in backup folder names; empty uses hostname when opening settings. */
   sd_pc_name: string;
+  /** Rename linked local SD backup folders with guest name after Create (Phase 56B). */
+  sd_backup_rename_with_guest: boolean;
+  /** Rename mirrored SD server backup folder after local guest rename (Phase 56C). */
+  sd_server_backup_rename_with_guest: boolean;
   sd_clear_after_backup: boolean;
   /** Eject after backup (before import/QR), or after import when no backup ran. */
   sd_eject_after_workflow: boolean;
@@ -629,6 +633,8 @@ export type CreateJobOptions = {
    * (Scan→ID) instead of plain typed `id`.
    */
   qr_numeric_session?: boolean;
+  /** SD backup session folder(s) from workflow (Phase 56); create media may be preview temps. */
+  backup_session_paths?: string[];
 };
 
 export type CreateJobResult = {

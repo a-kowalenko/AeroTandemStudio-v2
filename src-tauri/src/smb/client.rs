@@ -1227,6 +1227,105 @@ where
     }
 }
 
+fn validate_backup_leaf(leaf: &str) -> Result<(), String> {
+    let t = leaf.trim();
+    if t.is_empty() || t.contains('/') || t.contains('\\') || t.contains("..") {
+        return Err("Ungültiger Backup-Ordnername".into());
+    }
+    Ok(())
+}
+
+/// Rename a server backup session folder (leaf only) under the configured SD server backup root.
+pub fn rename_remote_backup_folder(
+    server_url: &str,
+    login: &str,
+    password: &str,
+    auto_mount_enabled: bool,
+    old_leaf: &str,
+    new_leaf: &str,
+) -> Result<String, String> {
+    validate_backup_leaf(old_leaf)?;
+    validate_backup_leaf(new_leaf)?;
+    if old_leaf.trim() == new_leaf.trim() {
+        return Err("Remote-Backup-Umbenennung übersprungen (gleicher Name)".into());
+    }
+    tauri::async_runtime::block_on(rename_remote_backup_folder_async(
+        server_url,
+        login,
+        password,
+        auto_mount_enabled,
+        old_leaf.trim(),
+        new_leaf.trim(),
+    ))
+}
+
+async fn rename_remote_backup_folder_async(
+    server_url: &str,
+    login: &str,
+    password: &str,
+    auto_mount_enabled: bool,
+    old_leaf: &str,
+    new_leaf: &str,
+) -> Result<String, String> {
+    let target =
+        resolve_server_target_blocking(server_url, auto_mount_enabled, login, password).await?;
+
+    match &target {
+        ServerTarget::Local { path } => {
+            let old = path.join(old_leaf);
+            let new = path.join(new_leaf);
+            if !old.is_dir() {
+                return Err(format!(
+                    "Server-Backup-Ordner fehlt: {}",
+                    old.display()
+                ));
+            }
+            if new.exists() {
+                return Err(format!(
+                    "Server-Backup-Ziel existiert bereits: {}",
+                    new.display()
+                ));
+            }
+            fs::rename(&old, &new).map_err(|e| format!("Server-Backup-Umbenennung fehlgeschlagen: {e}"))?;
+            Ok(display_remote(&target, new_leaf))
+        }
+        ServerTarget::Smb {
+            host,
+            port,
+            share,
+            subpath,
+        } => {
+            let _host_lock = host_lock::acquire(host).await;
+            let mut pooled = session_pool::acquire(
+                host,
+                *port,
+                share,
+                login,
+                password,
+                SMB_CONNECT_TIMEOUT,
+            )
+            .await?;
+            let old_remote = join_smb_path(subpath, old_leaf);
+            let new_remote = join_smb_path(subpath, new_leaf);
+            let rename_result = {
+                let (client, tree) = pooled.parts_mut();
+                client.rename(tree, &old_remote, &new_remote).await
+            };
+            match rename_result {
+                Ok(()) => {
+                    pooled.release().await;
+                    Ok(display_remote(&target, new_leaf))
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    session_pool::discard_on_error(pooled, &msg).await;
+                    Err(format!("Server-Backup-Umbenennung fehlgeschlagen: {msg}"))
+                }
+            }
+        }
+    }
+}
+
 fn copy_file_chunked(
     src: &Path,
     dst: &Path,

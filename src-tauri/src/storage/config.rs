@@ -247,6 +247,12 @@ pub struct AppConfig {
     /// Label embedded in SD backup folder names (`SD_Backup_…[pc]_…`). Empty → no tag.
     #[serde(default)]
     pub sd_pc_name: String,
+    /// After Create, rename linked local SD backup folders to include guest name (Phase 56B).
+    #[serde(default = "default_true")]
+    pub sd_backup_rename_with_guest: bool,
+    /// After local guest rename, rename the mirrored folder on the SD server backup (Phase 56C).
+    #[serde(default = "default_true")]
+    pub sd_server_backup_rename_with_guest: bool,
     #[serde(default)]
     pub sd_clear_after_backup: bool,
     /// Eject after successful backup (before import/QR), or after import when no backup ran.
@@ -1174,6 +1180,8 @@ impl Default for AppConfig {
             sd_server_backup_mode: default_sd_server_backup_mode(),
             sd_backup_mode: default_sd_backup_mode(),
             sd_pc_name: String::new(),
+            sd_backup_rename_with_guest: true,
+            sd_server_backup_rename_with_guest: true,
             sd_clear_after_backup: false,
             sd_eject_after_workflow: false,
             sd_eject_sound_enabled: true,

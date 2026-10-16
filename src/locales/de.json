@@ -464,7 +464,11 @@
         "serverUrlFromProfile": "Aus Server-Profil „{{name}}“.",
         "serverUrlMissing": "Kein Backup-URL im aktiven Server-Profil. Bitte unter Server setzen.",
         "setInServerProfile": "Backup-URL im Server-Profil setzen",
-        "clearAfterHint": "Löscht nur bereits gesicherte Dateien — ungesicherte bleiben."
+        "clearAfterHint": "Löscht nur bereits gesicherte Dateien — ungesicherte bleiben.",
+        "renameWithGuest": "Backup-Ordner mit Kundennamen umbenennen",
+        "renameWithGuestHint": "Nach dem Erstellen werden verknüpfte SD-Backup-Ordner lokal umbenannt (Zeitstempel im Namen bleibt für die Auto-Bereinigung erhalten).",
+        "serverRenameWithGuest": "Server-Backup-Ordner ebenfalls umbenennen",
+        "serverRenameWithGuestHint": "Spiegelt den lokalen Kundennamen auf dem Server-Backup (SMB). Bei laufendem Hintergrund-Spiegel folgt die Umbenennung automatisch danach."
       },
       "import": {
         "title": "Import & Auswerfen",
@@ -1635,6 +1639,20 @@
     "appendTitleWait": "Erst wenn der Upload abgeschlossen ist",
     "appendTitleBusy": "Eine Nachreichung läuft bereits",
     "appendTitleOk": "Weitere Medien in denselben Kundenordner legen",
+    "sdBackups": {
+      "title": "SD-Backups",
+      "loading": "SD-Backups…",
+      "openFolder": "Ordner öffnen",
+      "server": "Server-Backup",
+      "copyRemotePath": "Server-Pfad kopieren",
+      "pathCopied": "Pfad in die Zwischenablage kopiert.",
+      "remotePathHint": "Kein direkter Zugriff aus der App — Pfad kopieren und zum konfigurierten Server-Backup navigieren.",
+      "renamedLocal": "Umbenannt (lokal)",
+      "renamedRemote": "Umbenannt (Server)",
+      "originalName": "Ursprünglich: {{name}}",
+      "remoteRenameFailed": "Server-Umbenennung fehlgeschlagen: {{error}}",
+      "folderMissingHint": "SD-Backup-Ordner wurde entfernt oder verschoben."
+    },
     "files": "Dateien",
     "appended": "Nachgereicht",
     "appendedFolder": "Nachreichung {{folder}}",
@@ -2402,6 +2420,7 @@
       "secondaryBackupTitle": "Server-Backup",
       "secondaryBackupCancelledTitle": "Server-Backup abgebrochen",
       "secondaryBackupCancelledBody": "Lokales Backup bleibt. Server-Ordner kann unvollständig sein.",
+      "remoteRenameFailedTitle": "Server-Backup-Umbenennung",
       "title": "SD-Monitor"
     },
     "tile": {

@@ -9,8 +9,8 @@ use tauri::{AppHandle, Manager, State};
 use crate::commands::config::{ensure_ams_bridge_identity, ConfigState};
 use crate::storage::logging;
 use crate::storage::vorgang_history::{
-    AmsHandoffStatusUpdate, ViewableMediaItem, VorgangAppendEntry, VorgangEntry, VorgangFileEntry,
-    VorgangHistoryStore,
+    AmsHandoffStatusUpdate, ViewableMediaItem, VorgangAppendEntry, VorgangBackup, VorgangEntry,
+    VorgangFileEntry, VorgangHistoryStore,
 };
 use crate::video::append_job::{self, AppendJobResult, AppendMediaItem};
 use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, reset_cancel_flag};
@@ -806,6 +806,22 @@ pub async fn list_vorgang_appends(vorgang_id: i64) -> Result<Vec<VorgangAppendEn
     blocking_hist(move || {
         let store = open_store()?;
         store.list_appends(vorgang_id).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn list_vorgang_backups(vorgang_id: i64) -> Result<Vec<VorgangBackup>, String> {
+    blocking_hist(move || {
+        let store = open_store()?;
+        let mut rows = store
+            .list_vorgang_backups(vorgang_id)
+            .map_err(|e| e.to_string())?;
+        for row in &mut rows {
+            let path = row.local_path.trim();
+            row.local_missing = path.is_empty() || !std::path::Path::new(path).is_dir();
+        }
+        Ok(rows)
     })
     .await
 }

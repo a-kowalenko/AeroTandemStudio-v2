@@ -26,6 +26,7 @@
 | `@docs/phases/open/53-cloud-lookup-fallback.md` | Phase 53 (Cloud-Lookup-Fallback) |
 | `@docs/phases/open/54-ui-themes.md` | Phase 54 (UI-Themes · Team Spirit) |
 | `@docs/phases/open/55-theme-catalog.md` | Phase 55 (Theme-Katalog · Settings-only) |
+| `@docs/phases/open/56-vorgang-backup-link-rename.md` | Phase 56 (Vorgang ↔ SD-Backup + Rename lokal/SMB) |
 | `@docs/CLOUD_LOOKUP_FALLBACK_PLAN.md` | Phase 53 Master (ATS · AMS · Cloud) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
 | `@docs/opt/open/21-capcut-export.md` | OPT-21 (offen) |
@@ -59,6 +60,7 @@ Desktop-App zur automatisierten Erstellung von Tandem-Fallschirmsprung-Videos (I
 | 1 | **31.5** Extra-Dateien (Resync / optional löschen) | [`phases/open/31.5-extra-files.md`](phases/open/31.5-extra-files.md) | ⬜ |
 | 2 | **23.2h / 23.3** USB-MTP (Overrides / Linux libmtp) | [`phases/open/23-usb-mtp.md`](phases/open/23-usb-mtp.md) | 🔄 |
 | 3 | **53** Cloud-Lookup-Fallback (E2E nach Cloud+AMS) | [`phases/open/53`](phases/open/53-cloud-lookup-fallback.md) · [Master](CLOUD_LOOKUP_FALLBACK_PLAN.md) | ✅ ATS T0–T4; manuell offen |
+| later | **56** Vorgang ↔ SD-Backup + Rename (lokal + SMB) | [`phases/open/56-vorgang-backup-link-rename.md`](phases/open/56-vorgang-backup-link-rename.md) | ⬜ 56A–D |
 | later | **14** ML Foto-Klassifikation | [`phases/open/14-ml-photo.md`](phases/open/14-ml-photo.md) | ⬜ |
 | done | **48** Vorgang Medien-Viewer (lokal) | [`phases/open/48-vorgang-media-viewer.md`](phases/open/48-vorgang-media-viewer.md) | ✅ |
 | done | **50** Outro (User-Asset am Videoende) | [`phases/open/50-outro.md`](phases/open/50-outro.md) | ✅ |
@@ -123,6 +125,7 @@ Details: `@AGENTS.md`
 | 53 | Cloud-Lookup-Fallback (Buchungssuche ohne AMS) | ✅ ATS T0–T4 | [open/53](phases/open/53-cloud-lookup-fallback.md) · [Master](CLOUD_LOOKUP_FALLBACK_PLAN.md) |
 | 54 | UI-Themes (Team Spirit Spezialdesign) | ✅ | [open/54](phases/open/54-ui-themes.md) |
 | 55 | Theme-Katalog (Royal/Rose/Military/Sky/Sunset/Arctic/Forest/Graphite/FSZ) + Settings-only | ✅ | [open/55](phases/open/55-theme-catalog.md) |
+| 56 | Vorgang ↔ SD-Backup verknüpfen + Umbenennen (lokal + SMB) | ⬜ | [open/56](phases/open/56-vorgang-backup-link-rename.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 
@@ -180,9 +183,15 @@ Regeln: @AGENTS.md
 Nur 55.
 ```
 
+```
+Implementiere Phase 56 Slice A aus @docs/phases/open/56-vorgang-backup-link-rename.md
+Regeln: @AGENTS.md
+Nur 56A.
+```
+
 **Linux (Phase 15, erledigt):** `@docs/LINUX_BUILD.md`  
 **Performance (OPT-21):** `@docs/opt/open/21-capcut-export.md` · Index `@docs/optimization_plan.md`
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-10-13 (Phase 55 Theme-Katalog).*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-10-15 (Phase 56 Vorgang-Backup-Link + Rename).*

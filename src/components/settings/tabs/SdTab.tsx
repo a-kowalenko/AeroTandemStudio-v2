@@ -204,6 +204,28 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
           <p className="text-[11px] leading-snug text-muted">
             {t("settings.sd.backup.clearAfterHint")}
           </p>
+          {advanced ? (
+            <label
+              className={cn(
+                "flex items-center gap-2 text-sm",
+                !draft.sd_auto_backup && "pointer-events-none",
+              )}
+            >
+              <Checkbox
+                checked={draft.sd_backup_rename_with_guest && draft.sd_auto_backup}
+                disabled={!draft.sd_auto_backup}
+                onCheckedChange={(v) =>
+                  patchNow("sd_backup_rename_with_guest", v === true)
+                }
+              />
+              <span className="inline-flex items-center gap-1.5">
+                {t("settings.sd.backup.renameWithGuest")}
+                <SettingsHintIcon
+                  text={t("settings.sd.backup.renameWithGuestHint")}
+                />
+              </span>
+            </label>
+          ) : null}
         </div>
 
         {advanced ? (
@@ -300,6 +322,33 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
                     </SelectContent>
                   </Select>
                 </div>
+                <label
+                  className={cn(
+                    "flex items-center gap-2 text-sm",
+                    (!draft.sd_auto_backup || !draft.sd_backup_rename_with_guest) &&
+                      "pointer-events-none opacity-60",
+                  )}
+                >
+                  <Checkbox
+                    checked={
+                      draft.sd_server_backup_rename_with_guest &&
+                      draft.sd_backup_rename_with_guest &&
+                      draft.sd_auto_backup
+                    }
+                    disabled={
+                      !draft.sd_auto_backup || !draft.sd_backup_rename_with_guest
+                    }
+                    onCheckedChange={(v) =>
+                      patchNow("sd_server_backup_rename_with_guest", v === true)
+                    }
+                  />
+                  <span className="inline-flex items-center gap-1.5">
+                    {t("settings.sd.backup.serverRenameWithGuest")}
+                    <SettingsHintIcon
+                      text={t("settings.sd.backup.serverRenameWithGuestHint")}
+                    />
+                  </span>
+                </label>
               </div>
             ) : null}
           </>

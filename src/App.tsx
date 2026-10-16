@@ -1012,6 +1012,11 @@ function App() {
           summary: t("app.sd.copiedFiles", { count: res.copied_count }),
           detail: backupDetails.length ? backupDetails.join("\n") : undefined,
         });
+        if (res.backup_path?.trim()) {
+          useSdStore
+            .getState()
+            .registerBackupSessionForCreate(res.backup_path.trim());
+        }
         if (doClear) {
           const clearWarn = Boolean(res.clear_warning?.trim());
           const deleted = res.clear_deleted_count ?? 0;
@@ -2424,11 +2429,15 @@ function App() {
     try {
       const codec = (config?.video_codec ?? "auto") as "auto" | "h264" | "h265";
       const kundeSession = useKundeStore.getState();
+      const backupSessionPaths = [
+        ...useSdStore.getState().backupSessionsForCreate,
+      ];
       const res: CreateJobResult = await createJob(
         kunde,
         paths,
         photos,
         {
+          backup_session_paths: backupSessionPaths,
           watermark_clip_index: watermarkClipIndex,
           watermark_photo_indices: wmPhotos,
           dauer: config?.dauer ?? 5,
@@ -2468,6 +2477,9 @@ function App() {
       let uploadJobId: string | null = null;
       let detachedUpload = false;
       const vorgangId = res.vorgang_id ?? null;
+      if (vorgangId != null && backupSessionPaths.length > 0) {
+        useSdStore.getState().clearBackupSessionsForCreate();
+      }
       const correlationId = res.correlation_id?.trim() || null;
 
       if (config?.upload_to_server) {

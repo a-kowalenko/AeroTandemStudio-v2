@@ -1168,6 +1168,7 @@ pub async fn create_job(
         config.manual_entry_mode.clone()
     };
     let config_for_ready = config.clone();
+    let backup_session_paths_for_history = opts.backup_session_paths.clone();
     let qr_preview_for_history = qr_preview.filter(|p| !p.path.trim().is_empty());
 
     let on_progress = encode_progress_emitter(&app);
@@ -1217,26 +1218,46 @@ pub async fn create_job(
                     res.encoder
                 ),
             );
-            match crate::storage::vorgang_history::VorgangHistoryStore::open_default().and_then(
-                |store| {
-                    store.record_create_job(
-                        &kunde_for_history,
-                        &videos_for_history,
-                        &photos_for_history,
-                        &res,
-                        &manual_entry_mode_for_history,
-                        qr_preview_for_history.as_ref(),
-                        config_for_ready.upload_to_server,
-                    )
-                },
-            ) {
-                Ok(id) => {
+            let res_for_history = res.clone();
+            let history_job = tauri::async_runtime::spawn_blocking(move || {
+                crate::storage::vorgang_history::VorgangHistoryStore::open_default().and_then(
+                    |store| {
+                        store.record_create_job(
+                            &kunde_for_history,
+                            &videos_for_history,
+                            &photos_for_history,
+                            &res_for_history,
+                            &manual_entry_mode_for_history,
+                            qr_preview_for_history.as_ref(),
+                            config_for_ready.upload_to_server,
+                            config_for_ready.sd_backup_folder.as_str(),
+                            &backup_session_paths_for_history,
+                            config_for_ready.sd_backup_rename_with_guest,
+                            config_for_ready.sd_server_backup_enabled,
+                            config_for_ready.sd_server_backup_rename_with_guest,
+                            config_for_ready.resolve_sd_server_backup_url().as_str(),
+                            &config_for_ready.resolve_sd_server_backup_credentials().0,
+                            &config_for_ready.resolve_sd_server_backup_credentials().1,
+                            config_for_ready.smb_auto_mount_enabled,
+                        )
+                    },
+                )
+            })
+            .await;
+            match history_job {
+                Ok(Ok(id)) => {
                     res.vorgang_id = Some(id);
+                }
+                Ok(Err(e)) => {
+                    logging::error(
+                        "vorgang_history",
+                        format!("Vorgang-Historie konnte nicht gespeichert werden: {e}"),
+                    );
                 }
                 Err(e) => {
                     logging::error(
                         "vorgang_history",
-                        format!("Vorgang-Historie konnte nicht gespeichert werden: {e}"),
+                        format!("Vorgang-Historie (blocking) fehlgeschlagen: {e}"),
                     );
                 }
             }

@@ -62,6 +62,10 @@ type SdState = {
   /** Bumped on each enrich start / selector close — ignore stale enrich events. */
   selectorEnrichGen: number;
   processedOpen: boolean;
+  /** Backup session roots to link at the next Create (Phase 56). */
+  backupSessionsForCreate: string[];
+  registerBackupSessionForCreate: (path: string) => void;
+  clearBackupSessionsForCreate: () => void;
   setMonitoring: (v: boolean) => void;
   setDrives: (drives: SdDriveInfo[]) => void;
   setPhase: (phase: SdPhase) => void;
@@ -143,6 +147,26 @@ export const useSdStore = create<SdState>((set, get) => ({
   selectorEmptyReason: null,
   selectorEnrichGen: 0,
   processedOpen: false,
+  backupSessionsForCreate: [],
+
+  registerBackupSessionForCreate: (path) => {
+    const trimmed = path.trim();
+    if (!trimmed) return;
+    const key = trimmed.replace(/\//g, "\\").toLowerCase();
+    set((s) => {
+      if (
+        s.backupSessionsForCreate.some(
+          (p) => p.replace(/\//g, "\\").toLowerCase() === key,
+        )
+      ) {
+        return s;
+      }
+      return {
+        backupSessionsForCreate: [...s.backupSessionsForCreate, trimmed],
+      };
+    });
+  },
+  clearBackupSessionsForCreate: () => set({ backupSessionsForCreate: [] }),
 
   setMonitoring: (monitoring) =>
     set({ monitoring, phase: monitoring ? "monitoring" : "idle" }),

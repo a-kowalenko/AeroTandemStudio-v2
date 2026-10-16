@@ -622,7 +622,18 @@ fn finish_secondary_mirror(
         plan.auto_mount_enabled,
         |_| {},
     ) {
-        Ok(remote) => (Some(remote), warning, false),
+        Ok(remote) => {
+            SECONDARY_BACKUP.remember_completed_mirror(backup_dir_name, &remote);
+            crate::sd_card::backup_remote_rename::on_secondary_mirror_done(
+                backup_path,
+                &remote,
+                &plan.url,
+                &plan.login,
+                &plan.password,
+                plan.auto_mount_enabled,
+            );
+            (Some(remote), warning, false)
+        }
         Err(e) => (
             None,
             merge_secondary_warnings(
@@ -3004,15 +3015,92 @@ pub fn sanitize_pc_name_for_backup(raw: &str) -> String {
     out
 }
 
-/// `SD_Backup_{timestamp}[{pc}]_{hash}` — PC segment omitted when empty (legacy).
-pub fn build_backup_dir_name(timestamp: &str, pc_name: &str, short_hash: &str) -> String {
-    let safe = sanitize_pc_name_for_backup(pc_name);
-    let pc_part = if safe.is_empty() {
+/// Guest segment for backup folder rename (Phase 56B): export sanitize + spaces → `_`, 32-char cap.
+pub fn sanitize_guest_for_backup(raw: &str) -> String {
+    use crate::video::export_paths::sanitize_filename;
+    let mut out = String::new();
+    for ch in sanitize_filename(raw).chars() {
+        if ch.is_whitespace() {
+            if !out.is_empty() && !out.ends_with('_') {
+                out.push('_');
+            }
+        } else {
+            out.push(ch);
+        }
+        if out.chars().count() >= 32 {
+            break;
+        }
+    }
+    while out.ends_with('_') {
+        out.pop();
+    }
+    out
+}
+
+/// Parsed leaf of `SD_Backup_{timestamp}[_guest][{pc}]_{hash}` (Phase 56B).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedBackupDirName {
+    pub timestamp: String,
+    pub guest_segment: String,
+    pub pc_name: String,
+    pub short_hash: String,
+}
+
+/// Parse backup session folder leaf names produced by `build_backup_dir_name*`.
+pub fn parse_sd_backup_dir_name(name: &str) -> Option<ParsedBackupDirName> {
+    let rest = name.strip_prefix("SD_Backup_")?;
+    if rest.len() < 17 {
+        return None;
+    }
+    let timestamp = rest.get(..15)?.to_string();
+    crate::storage::local_folders::parse_sd_backup_folder_timestamp(name)?;
+    let tail = rest.get(15..)?;
+    let (before_hash, short_hash) = tail.rsplit_once('_')?;
+    if short_hash.is_empty() {
+        return None;
+    }
+    let mut middle = before_hash;
+    let mut pc_name = String::new();
+    if let Some(lbr) = middle.find('[') {
+        if let Some(rbr) = middle[lbr..].find(']') {
+            pc_name = middle[lbr + 1..lbr + rbr].to_string();
+            middle = &middle[..lbr];
+        }
+    }
+    let guest_segment = middle.trim_start_matches('_').to_string();
+    Some(ParsedBackupDirName {
+        timestamp,
+        guest_segment,
+        pc_name,
+        short_hash: short_hash.to_string(),
+    })
+}
+
+/// `SD_Backup_{timestamp}[_guest][{pc}]_{hash}` — guest omitted when empty (legacy layout).
+pub fn build_backup_dir_name_with_guest(
+    timestamp: &str,
+    pc_name: &str,
+    short_hash: &str,
+    guest_segment: &str,
+) -> String {
+    let safe_pc = sanitize_pc_name_for_backup(pc_name);
+    let pc_part = if safe_pc.is_empty() {
         String::new()
     } else {
-        format!("[{safe}]")
+        format!("[{safe_pc}]")
     };
-    format!("SD_Backup_{timestamp}{pc_part}_{short_hash}")
+    let guest = sanitize_guest_for_backup(guest_segment);
+    let guest_part = if guest.is_empty() {
+        String::new()
+    } else {
+        format!("_{guest}")
+    };
+    format!("SD_Backup_{timestamp}{guest_part}{pc_part}_{short_hash}")
+}
+
+/// `SD_Backup_{timestamp}[{pc}]_{hash}` — PC segment omitted when empty (legacy).
+pub fn build_backup_dir_name(timestamp: &str, pc_name: &str, short_hash: &str) -> String {
+    build_backup_dir_name_with_guest(timestamp, pc_name, short_hash, "")
 }
 
 fn drive_keys_equal(a: &str, b: &str) -> bool {
@@ -3489,6 +3577,44 @@ mod tests {
             build_backup_dir_name("20240101_120000", "", "ab12"),
             "SD_Backup_20240101_120000_ab12"
         );
+    }
+
+    #[test]
+    fn backup_dir_name_with_guest_and_parse_roundtrip() {
+        let name = build_backup_dir_name_with_guest(
+            "20240101_120000",
+            "Office-PC",
+            "ab12",
+            "Anna Schmidt",
+        );
+        assert_eq!(
+            name,
+            "SD_Backup_20240101_120000_Anna_Schmidt[Office-PC]_ab12"
+        );
+        let parsed = parse_sd_backup_dir_name(&name).unwrap();
+        assert_eq!(parsed.timestamp, "20240101_120000");
+        assert_eq!(parsed.guest_segment, "Anna_Schmidt");
+        assert_eq!(parsed.pc_name, "Office-PC");
+        assert_eq!(parsed.short_hash, "ab12");
+        assert!(
+            crate::storage::local_folders::parse_sd_backup_folder_timestamp(&name).is_some()
+        );
+    }
+
+    #[test]
+    fn sanitize_guest_for_backup_strips_invalid_and_spaces() {
+        assert_eq!(sanitize_guest_for_backup("Anna Schmidt"), "Anna_Schmidt");
+        assert_eq!(sanitize_guest_for_backup("Bad:Name"), "BadName");
+        assert!(sanitize_guest_for_backup("   ").is_empty());
+    }
+
+    #[test]
+    fn parse_sd_backup_dir_name_legacy_without_guest() {
+        let parsed =
+            parse_sd_backup_dir_name("SD_Backup_20240101_120000[Office-PC]_ab12").unwrap();
+        assert_eq!(parsed.guest_segment, "");
+        assert_eq!(parsed.pc_name, "Office-PC");
+        assert_eq!(parsed.short_hash, "ab12");
     }
 
     #[test]

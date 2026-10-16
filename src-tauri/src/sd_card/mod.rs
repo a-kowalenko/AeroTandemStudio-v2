@@ -1,4 +1,6 @@
 pub mod autoplay;
+pub mod backup_link;
+pub mod backup_remote_rename;
 pub mod copy_progress;
 pub mod eject;
 pub mod monitor;

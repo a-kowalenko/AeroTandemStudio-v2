@@ -211,6 +211,26 @@ pub struct VorgangAppendEntry {
     pub ams_error_message: String,
 }
 
+/// SD backup session folder linked to a Vorgang (Phase 56).
+#[derive(Debug, Clone, Serialize)]
+pub struct VorgangBackup {
+    pub id: i64,
+    pub vorgang_id: i64,
+    /// `primary_local` for rows created at Create time.
+    pub kind: String,
+    pub local_path: String,
+    pub local_original_name: String,
+    pub local_renamed_at: String,
+    pub remote_path: String,
+    pub remote_original_leaf: String,
+    pub remote_renamed_at: String,
+    pub remote_rename_error: String,
+    pub linked_at: String,
+    /// Filled when listing for UI (`list_vorgang_backups`); not persisted.
+    #[serde(default)]
+    pub local_missing: bool,
+}
+
 /// Lightweight path ref for disk-only clear (Phase 39 / 42).
 #[derive(Debug, Clone)]
 pub struct DiskFolderRef {
@@ -465,6 +485,24 @@ impl VorgangHistoryStore {
         conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_vorgang_dateien_append ON vorgang_dateien(append_id);",
         )?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS vorgang_backups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vorgang_id INTEGER NOT NULL REFERENCES vorgaenge(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL DEFAULT 'primary_local',
+                local_path TEXT NOT NULL,
+                local_original_name TEXT NOT NULL DEFAULT '',
+                local_renamed_at TEXT NOT NULL DEFAULT '',
+                remote_path TEXT NOT NULL DEFAULT '',
+                remote_original_leaf TEXT NOT NULL DEFAULT '',
+                remote_renamed_at TEXT NOT NULL DEFAULT '',
+                remote_rename_error TEXT NOT NULL DEFAULT '',
+                linked_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_vorgang_backups_vorgang ON vorgang_backups(vorgang_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_vorgang_backups_vorgang_local
+                ON vorgang_backups(vorgang_id, local_path);",
+        )?;
         Ok(())
     }
 
@@ -535,6 +573,15 @@ impl VorgangHistoryStore {
         manual_entry_mode: &str,
         qr_preview: Option<&QrPreview>,
         upload_to_server: bool,
+        sd_backup_folder: &str,
+        explicit_backup_sessions: &[String],
+        sd_backup_rename_with_guest: bool,
+        sd_server_backup_enabled: bool,
+        sd_server_backup_rename_with_guest: bool,
+        sd_server_backup_url: &str,
+        sd_server_login: &str,
+        sd_server_password: &str,
+        smb_auto_mount_enabled: bool,
     ) -> Result<i64, VorgangHistoryError> {
         let mut files = Vec::new();
         for p in video_paths {
@@ -552,14 +599,323 @@ impl VorgangHistoryStore {
         if !result.marker_path.trim().is_empty() {
             files.push(file_input_from_path(&result.marker_path, "other", "marker"));
         }
-        self.insert_vorgang(
+        let source_paths: Vec<String> = video_paths
+            .iter()
+            .chain(photo_paths.iter())
+            .cloned()
+            .collect();
+        let vorgang_id = self.insert_vorgang(
             kunde,
             result,
             manual_entry_mode,
             &files,
             qr_preview,
             upload_to_server,
-        )
+        )?;
+        if let Err(e) = self.link_vorgang_backups(
+            vorgang_id,
+            &source_paths,
+            sd_backup_folder,
+            explicit_backup_sessions,
+        ) {
+            logging::error(
+                "vorgang_history",
+                format!(
+                    "SD-Backup-Verknüpfung fehlgeschlagen (id={vorgang_id}): {e}"
+                ),
+            );
+        } else {
+            let linked = self.list_vorgang_backups(vorgang_id).unwrap_or_default();
+            if linked.is_empty() {
+                logging::warn(
+                    "vorgang_history",
+                    format!(
+                        "Keine SD-Backup-Ordner verknüpft (id={vorgang_id}, quellen={}, backup_root={})",
+                        source_paths.len(),
+                        sd_backup_folder.trim()
+                    ),
+                );
+            } else {
+                logging::info(
+                    "vorgang_history",
+                    format!(
+                        "SD-Backup verknüpft (id={vorgang_id}, anzahl={})",
+                        linked.len()
+                    ),
+                );
+            }
+            if !explicit_backup_sessions.is_empty() {
+                logging::info(
+                    "vorgang_history",
+                    format!(
+                        "Create: explizite SD-Backup-Session(s)={} (id={vorgang_id})",
+                        explicit_backup_sessions.len()
+                    ),
+                );
+            }
+            crate::sd_card::backup_remote_rename::hydrate_vorgang_backup_remote_mirrors(vorgang_id);
+            if sd_backup_rename_with_guest {
+            let guest = kunde.resolve_gast();
+            if guest.trim().is_empty() {
+                logging::warn(
+                    "vorgang_history",
+                    format!(
+                        "SD-Backup-Umbenennung übersprungen — kein Gastname (id={vorgang_id})"
+                    ),
+                );
+            } else if let Err(e) =
+                self.rename_vorgang_backups_local(vorgang_id, sd_backup_folder, &guest)
+            {
+                logging::error(
+                    "vorgang_history",
+                    format!(
+                        "SD-Backup-Umbenennung fehlgeschlagen (id={vorgang_id}): {e}"
+                    ),
+                );
+            } else if sd_server_backup_enabled && sd_server_backup_rename_with_guest {
+                let remote_cfg = crate::sd_card::backup_remote_rename::RemoteBackupRenameConfig {
+                    enabled: sd_server_backup_enabled && sd_server_backup_rename_with_guest,
+                    server_url: sd_server_backup_url.trim().to_string(),
+                    login: sd_server_login.to_string(),
+                    password: sd_server_password.to_string(),
+                    auto_mount_enabled: smb_auto_mount_enabled,
+                };
+                crate::sd_card::backup_remote_rename::plan_vorgang_backups_remote_rename_after_create(
+                    vorgang_id,
+                    &remote_cfg,
+                );
+            }
+            }
+        }
+        Ok(vorgang_id)
+    }
+
+    /// Link SD backup session folders derived from create source paths (Phase 56A).
+    pub fn link_vorgang_backups(
+        &self,
+        vorgang_id: i64,
+        source_paths: &[String],
+        sd_backup_folder: &str,
+        explicit_backup_sessions: &[String],
+    ) -> Result<(), VorgangHistoryError> {
+        let folders = crate::sd_card::backup_link::collect_backup_folders_for_vorgang_link(
+            source_paths,
+            sd_backup_folder,
+            explicit_backup_sessions,
+        );
+        if folders.is_empty() {
+            return Ok(());
+        }
+        let conn = self.connect()?;
+        let linked_at = utc_now_iso();
+        for folder in folders {
+            let local_path = folder.to_string_lossy().into_owned();
+            let local_original_name = folder
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            conn.execute(
+                "INSERT OR IGNORE INTO vorgang_backups (
+                    vorgang_id, kind, local_path, local_original_name, linked_at
+                 ) VALUES (?1, 'primary_local', ?2, ?3, ?4)",
+                params![vorgang_id, local_path, local_original_name, linked_at],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Rename linked local backup folders to include guest name (Phase 56B, best-effort per row).
+    pub fn rename_vorgang_backups_local(
+        &self,
+        vorgang_id: i64,
+        sd_backup_folder: &str,
+        guest: &str,
+    ) -> Result<(), VorgangHistoryError> {
+        let rows = self.list_vorgang_backups(vorgang_id)?;
+        if rows.is_empty() {
+            return Ok(());
+        }
+        let conn = self.connect()?;
+        for row in rows {
+            if !row.local_renamed_at.trim().is_empty() {
+                continue;
+            }
+            let old_path = row.local_path.clone();
+            match crate::sd_card::backup_link::rename_local_backup_folder(
+                sd_backup_folder,
+                &row.local_path,
+                guest,
+            ) {
+                Ok(new_path) => {
+                    let renamed_at = utc_now_iso();
+                    conn.execute(
+                        "UPDATE vorgang_backups SET local_path = ?1, local_renamed_at = ?2
+                         WHERE id = ?3",
+                        params![new_path, renamed_at, row.id],
+                    )?;
+                    if new_path != old_path {
+                        logging::info(
+                            "vorgang_history",
+                            format!(
+                                "SD-Backup lokal umbenannt (backup_id={}, vorgang_id={}): {} → {}",
+                                row.id,
+                                vorgang_id,
+                                old_path,
+                                new_path
+                            ),
+                        );
+                        let new_leaf = std::path::Path::new(&new_path)
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        if !new_leaf.is_empty() {
+                            crate::sd_card::secondary_backup::SECONDARY_BACKUP
+                                .retarget_mirror_after_local_rename(
+                                    std::path::Path::new(&old_path),
+                                    std::path::Path::new(&new_path),
+                                    &new_leaf,
+                                );
+                        }
+                    }
+                }
+                Err(e) => {
+                    logging::error(
+                        "vorgang_history",
+                        format!(
+                            "SD-Backup lokal umbenennen fehlgeschlagen (backup_id={}, vorgang_id={}): {e}",
+                            row.id, vorgang_id
+                        ),
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn list_vorgang_backups(
+        &self,
+        vorgang_id: i64,
+    ) -> Result<Vec<VorgangBackup>, VorgangHistoryError> {
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, vorgang_id, kind, local_path, local_original_name, local_renamed_at,
+                    remote_path, remote_original_leaf, remote_renamed_at, remote_rename_error,
+                    linked_at
+             FROM vorgang_backups WHERE vorgang_id = ?1 ORDER BY id ASC",
+        )?;
+        let rows = stmt.query_map(params![vorgang_id], |row| {
+            Ok(VorgangBackup {
+                id: row.get(0)?,
+                vorgang_id: row.get(1)?,
+                kind: row.get(2)?,
+                local_path: row.get(3)?,
+                local_original_name: row.get(4)?,
+                local_renamed_at: row.get(5)?,
+                remote_path: row.get(6)?,
+                remote_original_leaf: row.get(7)?,
+                remote_renamed_at: row.get(8)?,
+                remote_rename_error: row.get(9)?,
+                linked_at: row.get(10)?,
+                local_missing: false,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn get_vorgang_backup_by_id(&self, backup_id: i64) -> Option<VorgangBackup> {
+        self.connect()
+            .ok()
+            .and_then(|conn| {
+                conn.query_row(
+                    "SELECT id, vorgang_id, kind, local_path, local_original_name, local_renamed_at,
+                            remote_path, remote_original_leaf, remote_renamed_at, remote_rename_error,
+                            linked_at
+                     FROM vorgang_backups WHERE id = ?1",
+                    params![backup_id],
+                    |row| {
+                        Ok(VorgangBackup {
+                            id: row.get(0)?,
+                            vorgang_id: row.get(1)?,
+                            kind: row.get(2)?,
+                            local_path: row.get(3)?,
+                            local_original_name: row.get(4)?,
+                            local_renamed_at: row.get(5)?,
+                            remote_path: row.get(6)?,
+                            remote_original_leaf: row.get(7)?,
+                            remote_renamed_at: row.get(8)?,
+                            remote_rename_error: row.get(9)?,
+                            linked_at: row.get(10)?,
+                            local_missing: false,
+                        })
+                    },
+                )
+                .ok()
+            })
+    }
+
+    /// Match rows by current local path or original leaf after a secondary mirror completes.
+    pub fn note_vorgang_backup_remote_mirror(
+        &self,
+        local_path: &str,
+        original_leaf: &str,
+        remote_path: &str,
+    ) -> Result<Vec<i64>, VorgangHistoryError> {
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(
+            "SELECT id FROM vorgang_backups
+             WHERE local_path = ?1 OR local_original_name = ?2",
+        )?;
+        let leaf = original_leaf.trim();
+        let path = local_path.trim();
+        let ids: Vec<i64> = stmt
+            .query_map(params![path, leaf], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        for id in &ids {
+            conn.execute(
+                "UPDATE vorgang_backups SET
+                    remote_path = ?1,
+                    remote_original_leaf = CASE
+                        WHEN trim(remote_original_leaf) = '' THEN local_original_name
+                        ELSE remote_original_leaf
+                    END
+                 WHERE id = ?2",
+                params![remote_path.trim(), id],
+            )?;
+        }
+        Ok(ids)
+    }
+
+    pub fn mark_vorgang_backup_remote_renamed(
+        &self,
+        backup_id: i64,
+        remote_path: &str,
+        old_leaf: &str,
+    ) -> Result<(), VorgangHistoryError> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE vorgang_backups SET
+                remote_path = ?1,
+                remote_original_leaf = ?2,
+                remote_renamed_at = ?3,
+                remote_rename_error = ''
+             WHERE id = ?4",
+            params![remote_path.trim(), old_leaf.trim(), utc_now_iso(), backup_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_vorgang_backup_remote_rename_error(
+        &self,
+        backup_id: i64,
+        message: &str,
+    ) -> Result<(), VorgangHistoryError> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE vorgang_backups SET remote_rename_error = ?1 WHERE id = ?2",
+            params![message.trim(), backup_id],
+        )?;
+        Ok(())
     }
 
     pub fn insert_vorgang(
@@ -2004,6 +2360,94 @@ mod tests {
     }
 
     #[test]
+    fn link_vorgang_backups_dedupes_on_insert() {
+        let dir = tempdir().unwrap();
+        let backup_root = dir.path().join("backups");
+        fs::create_dir_all(&backup_root).unwrap();
+        let session = backup_root.join("SD_Backup_20240101_120000_ab12");
+        fs::create_dir_all(&session).unwrap();
+        let a = session.join("a.mp4");
+        let b = session.join("b.mp4");
+        fs::write(&a, b"1").unwrap();
+        fs::write(&b, b"2").unwrap();
+
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+        let id = store
+            .insert_vorgang(&sample_kunde(), &sample_result(), "", &[], None, false)
+            .unwrap();
+        let paths = vec![
+            a.to_string_lossy().into_owned(),
+            b.to_string_lossy().into_owned(),
+        ];
+        store
+            .link_vorgang_backups(
+                id,
+                &paths,
+                backup_root.to_string_lossy().as_ref(),
+                &[],
+            )
+            .unwrap();
+        store
+            .link_vorgang_backups(
+                id,
+                &[a.to_string_lossy().into_owned()],
+                backup_root.to_string_lossy().as_ref(),
+                &[],
+            )
+            .unwrap();
+        let rows = store.list_vorgang_backups(id).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].kind, "primary_local");
+        assert_eq!(rows[0].local_original_name, "SD_Backup_20240101_120000_ab12");
+    }
+
+    #[test]
+    fn rename_vorgang_backups_local_updates_path_and_timestamp() {
+        let dir = tempdir().unwrap();
+        let backup_root = dir.path().join("backups");
+        fs::create_dir_all(&backup_root).unwrap();
+        let session = backup_root.join("SD_Backup_20240101_120000_ab12");
+        fs::create_dir_all(&session).unwrap();
+        let clip = session.join("a.mp4");
+        fs::write(&clip, b"1").unwrap();
+
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+        let mut kunde = sample_kunde();
+        kunde.gast = "Anna Schmidt".into();
+        let id = store
+            .insert_vorgang(&kunde, &sample_result(), "", &[], None, false)
+            .unwrap();
+        store
+            .link_vorgang_backups(
+                id,
+                &[clip.to_string_lossy().into_owned()],
+                backup_root.to_string_lossy().as_ref(),
+                &[],
+            )
+            .unwrap();
+        store
+            .rename_vorgang_backups_local(
+                id,
+                backup_root.to_string_lossy().as_ref(),
+                "Anna Schmidt",
+            )
+            .unwrap();
+        let rows = store.list_vorgang_backups(id).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].local_renamed_at.ends_with('Z'));
+        assert_eq!(
+            rows[0].local_original_name,
+            "SD_Backup_20240101_120000_ab12"
+        );
+        assert!(
+            rows[0]
+                .local_path
+                .ends_with("SD_Backup_20240101_120000_Anna_Schmidt_ab12")
+        );
+        assert!(!session.is_dir());
+    }
+
+    #[test]
     fn record_create_job_builds_file_rows() {
         let dir = tempdir().unwrap();
         let src = dir.path().join("src.mp4");
@@ -2032,6 +2476,15 @@ mod tests {
                 "id",
                 None,
                 true,
+                "",
+                &[],
+                false,
+                false,
+                false,
+                "",
+                "",
+                "",
+                false,
             )
             .unwrap();
         let entry = &store.list_vorgaenge(10, None).unwrap()[0];
@@ -2623,6 +3076,15 @@ mod tests {
                 &result,
                 "",
                 None,
+                false,
+                "",
+                &[],
+                false,
+                false,
+                false,
+                "",
+                "",
+                "",
                 false,
             )
             .unwrap();

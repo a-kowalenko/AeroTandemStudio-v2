@@ -296,18 +296,18 @@ export function createStepIdFromStatus(
       return planHasIntroAudioStep(plan ?? null) ? "intro-audio" : "intro-video";
     }
     if (
-      /erstelle intro|intro fertig|kodiere intro|exportiere intro\+video|exporting intro\+video|exportando intro\+video|füge intro|analysiere intro|zusammenfügen fertig|ohne intro \(stream-copy\)|intro\+video: hevc|exportiere video\+outro|exporting video\+outro|exportando video\+outro|kodiere intro\+video|encoding intro\+video|codificando intro\+video/.test(
-        s,
-      )
-    ) {
-      return "intro-video";
-    }
-    if (
-      /bereite videoclips|videoclips vorbereitet|füge clips|füge kodierte clips|kodiere .*clips parallel|compatible|fast-concat|mpegts|legacy-zusammenfügen|stream-copy trim|re-encode trim|probing|compatible-probe|compatible-prep|compatible-concat|compatible-finalize|compatible-validate|container finalisieren|übernehme vorbereitete|preparing clips|preparando clips/.test(
+      /bereite videoclips|videoclips vorbereitet|füge clips|füge kodierte clips|drehe und füge clips|zusammenfügen fertig|kodiere .*clips parallel|compatible|fast-concat|mpegts|legacy-zusammenfügen|stream-copy trim|re-encode trim|probing|compatible-probe|compatible-prep|compatible-concat|compatible-finalize|compatible-validate|container finalisieren|übernehme vorbereitete|preparing clips|preparando clips/.test(
         s,
       )
     ) {
       return "body-join";
+    }
+    if (
+      /erstelle intro|intro fertig|kodiere intro|exportiere intro\+video|exporting intro\+video|exportando intro\+video|füge intro|analysiere intro|ohne intro \(stream-copy\)|intro\+video: hevc|exportiere video\+outro|exporting video\+outro|exportando video\+outro|kodiere intro\+video|encoding intro\+video|codificando intro\+video/.test(
+        s,
+      )
+    ) {
+      return "intro-video";
     }
     return null;
   }
@@ -317,6 +317,10 @@ export function createStepIdFromStatus(
       s,
     )
   ) {
+    // Intro/Outro mux plans use body-join for concat; do not also map here.
+    if (planHasIntroVideoSubSteps(plan ?? null)) {
+      return null;
+    }
     return "video";
   }
 

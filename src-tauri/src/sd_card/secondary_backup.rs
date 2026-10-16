@@ -2,7 +2,7 @@
 //! (same transport as Erstellen-Upload). Local absolute paths remain a fallback
 //! for tests / rare local dual-disk setups — not Finder mounts as the primary path.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -14,6 +14,7 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 
 use crate::smb::{upload_path, UploadProgress, UploadResult};
+use crate::storage::cache::normalize_key;
 use crate::storage::logging;
 use crate::video::ffmpeg::{reset_secondary_backup_cancel, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
@@ -53,18 +54,64 @@ type EventCb = Arc<dyn Fn(SecondaryBackupEvent) + Send + Sync>;
 pub struct SecondaryBackupQueue {
     jobs: Mutex<VecDeque<SecondaryBackupJob>>,
     running: AtomicBool,
+    active_job: Mutex<Option<SecondaryBackupJob>>,
     on_event: Mutex<Option<EventCb>>,
+    /// Leaf name → remote display path for mirrors finished before a Vorgang link exists.
+    completed_mirror_by_leaf: Mutex<HashMap<String, String>>,
 }
 
 pub static SECONDARY_BACKUP: Lazy<SecondaryBackupQueue> = Lazy::new(|| SecondaryBackupQueue {
     jobs: Mutex::new(VecDeque::new()),
     running: AtomicBool::new(false),
+    active_job: Mutex::new(None),
     on_event: Mutex::new(None),
+    completed_mirror_by_leaf: Mutex::new(HashMap::new()),
 });
 
 impl SecondaryBackupQueue {
     pub fn set_callback(&self, cb: Option<EventCb>) {
         *self.on_event.lock().unwrap() = cb;
+    }
+
+    pub(crate) fn remember_completed_mirror(&self, leaf: &str, remote_path: &str) {
+        let leaf = leaf.trim();
+        let remote = remote_path.trim();
+        if leaf.is_empty() || remote.is_empty() {
+            return;
+        }
+        const MAX: usize = 32;
+        let mut map = self.completed_mirror_by_leaf.lock().unwrap();
+        if map.len() >= MAX && !map.contains_key(leaf) {
+            if let Some(old) = map.keys().next().cloned() {
+                map.remove(&old);
+            }
+        }
+        map.insert(leaf.to_string(), remote.to_string());
+    }
+
+    /// Remote path from a mirror that finished before `vorgang_backups` existed.
+    pub fn completed_mirror_remote_for_leaf(&self, leaf: &str) -> Option<String> {
+        let leaf = leaf.trim();
+        if leaf.is_empty() {
+            return None;
+        }
+        self.completed_mirror_by_leaf
+            .lock()
+            .unwrap()
+            .get(leaf)
+            .cloned()
+    }
+
+    fn retarget_completed_mirror_leaf(&self, old_leaf: &str, new_leaf: &str) {
+        let old_leaf = old_leaf.trim();
+        let new_leaf = new_leaf.trim();
+        if old_leaf.is_empty() || new_leaf.is_empty() || old_leaf == new_leaf {
+            return;
+        }
+        let mut map = self.completed_mirror_by_leaf.lock().unwrap();
+        if let Some(remote) = map.remove(old_leaf) {
+            map.insert(new_leaf.to_string(), remote);
+        }
     }
 
     pub fn enqueue(&self, job: SecondaryBackupJob) {
@@ -116,9 +163,69 @@ impl SecondaryBackupQueue {
         }
     }
 
+    /// True when a mirror for this local backup folder is queued or running (Phase 56C).
+    pub fn is_mirror_busy_for(&self, primary_path: &Path, original_leaf: &str) -> bool {
+        let key = normalize_key(primary_path);
+        let leaf = original_leaf.trim();
+        let matches = |job: &SecondaryBackupJob| {
+            normalize_key(&job.primary_path) == key
+                || (!leaf.is_empty()
+                    && (job.backup_dir_name.trim() == leaf
+                        || job
+                            .primary_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| n == leaf)))
+        };
+        if self
+            .active_job
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|j| matches(j))
+        {
+            return true;
+        }
+        self.jobs.lock().unwrap().iter().any(|j| matches(j))
+    }
+
+    /// Update queued/active mirror jobs when a local backup folder was renamed (Phase 56C).
+    pub fn retarget_mirror_after_local_rename(
+        &self,
+        old_path: &Path,
+        new_path: &Path,
+        new_dir_name: &str,
+    ) {
+        let old_key = normalize_key(old_path);
+        let old_leaf = old_path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if !old_leaf.is_empty() && old_leaf != new_dir_name {
+            self.retarget_completed_mirror_leaf(&old_leaf, new_dir_name);
+        }
+        {
+            let mut q = self.jobs.lock().unwrap();
+            for job in q.iter_mut() {
+                if normalize_key(&job.primary_path) == old_key {
+                    job.primary_path = new_path.to_path_buf();
+                    job.backup_dir_name = new_dir_name.to_string();
+                }
+            }
+        }
+        if let Some(active) = self.active_job.lock().unwrap().as_mut() {
+            if normalize_key(&active.primary_path) == old_key {
+                active.primary_path = new_path.to_path_buf();
+                active.backup_dir_name = new_dir_name.to_string();
+            }
+        }
+    }
+
     fn run_job(&self, job: SecondaryBackupJob) {
         // Cancel applies to the current job only; clear so the next queued job can run.
         reset_secondary_backup_cancel();
+
+        *self.active_job.lock().unwrap() = Some(job.clone());
 
         let primary = job.primary_path.to_string_lossy().into_owned();
         let on_event = self.on_event.lock().unwrap().clone();
@@ -173,6 +280,15 @@ impl SecondaryBackupQueue {
                 logging::info(
                     "sd",
                     format!("Secondary backup done: id={}, path={secondary}", job.id),
+                );
+                self.remember_completed_mirror(&job.backup_dir_name, &secondary);
+                crate::sd_card::backup_remote_rename::on_secondary_mirror_done(
+                    &job.primary_path,
+                    &secondary,
+                    &job.server_url,
+                    &job.login,
+                    &job.password,
+                    job.auto_mount_enabled,
                 );
                 self.emit(SecondaryBackupEvent {
                     state: "done".into(),
@@ -229,6 +345,7 @@ impl SecondaryBackupQueue {
                 }
             }
         }
+        *self.active_job.lock().unwrap() = None;
     }
 
     /// Test helper: wait until the queue is idle (no jobs, not running).

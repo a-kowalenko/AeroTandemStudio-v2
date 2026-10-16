@@ -146,6 +146,7 @@ import { VorgangFolderChip } from "@/components/history/VorgangFolderChip";
 import { VorgangLocalChip } from "@/components/history/VorgangLocalChip";
 import { VorgangAmsStepper } from "@/components/history/VorgangAmsStepper";
 import { VorgangMediaViewer } from "@/components/history/VorgangMediaViewer";
+import { VorgangSdBackupsSection } from "@/components/history/VorgangSdBackupsSection";
 import {
   MediaFileContextMenu,
   mediaContextMenuHandler,
@@ -2741,6 +2742,12 @@ function VorgaengePanel({
                   </div>
                 ) : null}
               </div>
+
+              <VorgangSdBackupsSection
+                vorgangId={selected.id}
+                dialogOpen={dialogOpen}
+                refreshKey={appendRefreshKey}
+              />
 
               <div>
                 <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-medium text-muted-foreground">

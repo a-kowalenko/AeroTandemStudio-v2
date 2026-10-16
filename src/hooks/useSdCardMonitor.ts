@@ -355,6 +355,15 @@ export function useSdCardMonitor(opts?: {
       );
 
       unlisteners.push(
+        await listen<{ message?: string }>("sd-backup-remote-rename", (event) => {
+          const msg = event.payload.message?.trim();
+          if (msg) {
+            showWarning(msg, tr("sd.monitor.remoteRenameFailedTitle"));
+          }
+        }),
+      );
+
+      unlisteners.push(
         await listen<SecondaryBackupEvent>("sd-secondary-backup", (event) => {
           const p = event.payload;
           setSecondaryBackup(p);

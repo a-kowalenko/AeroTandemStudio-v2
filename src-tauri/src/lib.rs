@@ -63,7 +63,8 @@ use commands::video::{
 };
 use commands::vorgang_history::{
     create_append_job, delete_vorgaenge, delete_vorgang_extra_files, get_handoff_status,
-    list_vorgaenge, list_vorgang_appends, list_vorgang_dateien, list_vorgang_viewable_media,
+    list_vorgaenge, list_vorgang_appends, list_vorgang_backups, list_vorgang_dateien,
+    list_vorgang_viewable_media,
     preflight_vorgang_upload, probe_vorgang_folders, reconcile_stale_uploads,
     resync_vorgang_delivery_list, set_vorgang_upload_state, sync_open_handoffs,
 };
@@ -266,6 +267,7 @@ pub fn run() {
             list_vorgang_dateien,
             list_vorgang_viewable_media,
             list_vorgang_appends,
+            list_vorgang_backups,
             create_append_job,
             get_handoff_status,
             delete_vorgaenge,
