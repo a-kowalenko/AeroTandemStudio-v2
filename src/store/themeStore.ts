@@ -227,6 +227,31 @@ export function applyDom(id: ThemeId) {
   document.documentElement.dataset.theme = id;
 }
 
+function prefersReducedMotion(): boolean {
+  return (
+    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
+  );
+}
+
+/** User-initiated theme changes; instant when View Transitions or motion prefs unavailable. */
+export function applyDomWithTransition(id: ThemeId) {
+  const run = () => applyDom(id);
+  if (prefersReducedMotion()) {
+    run();
+    return;
+  }
+  const startViewTransition = (
+    document as Document & {
+      startViewTransition?: (updateCallback: () => void) => unknown;
+    }
+  ).startViewTransition;
+  if (startViewTransition) {
+    startViewTransition.call(document, run);
+  } else {
+    run();
+  }
+}
+
 export function initTheme(): ThemeId {
   const stored = readStored();
   const id = stored ?? (systemPrefersDark() ? "dark" : "light");
@@ -239,10 +264,11 @@ type ThemeState = {
   setMode: (mode: ThemeId) => void;
 };
 
-export const useThemeStore = create<ThemeState>((set) => ({
+export const useThemeStore = create<ThemeState>((set, get) => ({
   mode: "light",
   setMode: (mode) => {
-    applyDom(mode);
+    if (get().mode === mode) return;
+    applyDomWithTransition(mode);
     try {
       localStorage.setItem(STORAGE_KEY, mode);
     } catch {

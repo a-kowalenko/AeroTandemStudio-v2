@@ -1734,6 +1734,15 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
   }
 }
 
+/* Theme switch — crossfade via View Transitions API (themeStore.applyDomWithTransition). */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 320ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
 @layer utilities {
   .ats-surface {
     background: var(--ats-surface);
