@@ -10,6 +10,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-17
+
 ### Neu
 
 - Historie: SD-Backups zum Vorgang — verknüpfte Backup-Ordner, Ordner öffnen, Server-Pfad kopieren
