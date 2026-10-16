@@ -1743,6 +1743,59 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
   }
 }
 
+/* Theme picker shelf — slide + backdrop (ThemePanel.tsx, PANEL_ANIM_MS). */
+.ats-theme-panel-root {
+  --ats-theme-panel-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  pointer-events: none;
+}
+
+.ats-theme-panel-root[data-open="true"] {
+  pointer-events: auto;
+}
+
+.ats-theme-panel-backdrop {
+  opacity: 0;
+  transition: opacity 340ms ease-out;
+}
+
+.ats-theme-panel-shell {
+  transform: translate3d(100%, 0, 0);
+  transition: transform 340ms var(--ats-theme-panel-ease);
+  will-change: transform;
+}
+
+.ats-theme-panel-root[data-open="true"] .ats-theme-panel-backdrop {
+  opacity: 1;
+}
+
+.ats-theme-panel-root[data-open="true"] .ats-theme-panel-shell {
+  transform: translate3d(0, 0, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ats-theme-panel-backdrop,
+  .ats-theme-panel-shell {
+    transition: none;
+    will-change: auto;
+  }
+
+  .ats-theme-panel-root[data-open="false"] .ats-theme-panel-backdrop {
+    opacity: 0;
+  }
+
+  .ats-theme-panel-root[data-open="true"] .ats-theme-panel-backdrop {
+    opacity: 1;
+  }
+
+  .ats-theme-panel-root[data-open="false"] .ats-theme-panel-shell {
+    transform: translate3d(100%, 0, 0);
+  }
+
+  .ats-theme-panel-root[data-open="true"] .ats-theme-panel-shell {
+    transform: none;
+  }
+}
+
 @layer utilities {
   .ats-surface {
     background: var(--ats-surface);

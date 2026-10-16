@@ -1,4 +1,4 @@
-import { useEffect, useId } from "react";
+import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,9 @@ import { useUiStore } from "@/store/uiStore";
 /** Below AppChrome (110), above workflow; non-modal theme shelf. */
 const PANEL_Z = "z-[105]";
 
+/** Keep in sync with `.ats-theme-panel-*` transition duration in `index.css`. */
+const PANEL_ANIM_MS = 340;
+
 export function ThemePanel() {
   const { t } = useTranslation();
   const panelId = useId();
@@ -20,12 +23,39 @@ export function ThemePanel() {
   const themeMode = useThemeStore((s) => s.mode);
   const setThemeMode = useThemeStore((s) => s.setMode);
 
+  const wantsOpen = open && !settingsOpen;
+  const [present, setPresent] = useState(wantsOpen);
+  const [expanded, setExpanded] = useState(false);
+
   useEffect(() => {
-    if (!open) return;
-    if (settingsOpen) {
+    if (settingsOpen && open) {
       setThemePanelOpen(false);
-      return;
     }
+  }, [settingsOpen, open, setThemePanelOpen]);
+
+  useEffect(() => {
+    if (wantsOpen) {
+      setPresent(true);
+      let r2 = 0;
+      const r1 = requestAnimationFrame(() => {
+        r2 = requestAnimationFrame(() => setExpanded(true));
+      });
+      return () => {
+        cancelAnimationFrame(r1);
+        if (r2) cancelAnimationFrame(r2);
+      };
+    }
+    setExpanded(false);
+  }, [wantsOpen]);
+
+  useEffect(() => {
+    if (wantsOpen || !present || expanded) return;
+    const hideTimer = window.setTimeout(() => setPresent(false), PANEL_ANIM_MS);
+    return () => window.clearTimeout(hideTimer);
+  }, [wantsOpen, present, expanded]);
+
+  useEffect(() => {
+    if (!expanded) return;
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -34,18 +64,19 @@ export function ThemePanel() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, settingsOpen, setThemePanelOpen]);
+  }, [expanded, setThemePanelOpen]);
 
-  if (!open || settingsOpen) return null;
+  if (!present) return null;
 
   return createPortal(
-    <>
+    <div
+      className={cn("ats-theme-panel-root fixed inset-0", PANEL_Z)}
+      data-open={expanded ? "true" : "false"}
+      aria-hidden={!expanded}
+    >
       <button
         type="button"
-        className={cn(
-          "fixed inset-0 cursor-default bg-black/15 dark:bg-black/25",
-          PANEL_Z,
-        )}
+        className="ats-theme-panel-backdrop fixed inset-0 cursor-default bg-black/15 dark:bg-black/25"
         aria-label={t("common.actions.close")}
         onClick={() => setThemePanelOpen(false)}
       />
@@ -56,9 +87,7 @@ export function ThemePanel() {
         aria-modal="false"
         aria-label={t("chrome.settings.themePanelTitle")}
         className={cn(
-          "fixed bottom-0 right-0 flex w-[min(100vw,20rem)] flex-col border-l border-border bg-card shadow-xl",
-          "top-11",
-          PANEL_Z,
+          "ats-theme-panel-shell fixed bottom-0 right-0 top-11 flex w-[min(100vw,20rem)] flex-col border-l border-border bg-card shadow-xl",
         )}
       >
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -84,7 +113,7 @@ export function ThemePanel() {
           />
         </div>
       </aside>
-    </>,
+    </div>,
     document.body,
   );
 }
