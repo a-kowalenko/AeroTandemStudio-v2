@@ -35,8 +35,9 @@ type Props = {
 };
 
 /**
- * Non-modal create report (replaces the old success dialog). Hover pauses the
- * auto-hide; the timer survives moving between upload panel and standalone.
+ * Non-modal create report (replaces the old success dialog). Standalone shows a
+ * bottom auto-close bar (like SessionOutcomeCard). Hover pauses the timer; it
+ * survives moving between upload panel and standalone.
  * Layout mirrors WorkflowProgressPanel "Fortschritt" header geometry.
  */
 export function CreateOutcomeCard({
@@ -54,8 +55,9 @@ export function CreateOutcomeCard({
   const [exiting, setExiting] = useState(false);
 
   const uploadFinished = embedded && Boolean(info.serverUploaded);
-  const { dismiss, hoverProps } = usePausableAutoDismiss(
-    uploadFinished ? 0 : CREATE_OUTCOME_HIDE_MS,
+  const hideMs = uploadFinished ? 0 : CREATE_OUTCOME_HIDE_MS;
+  const { dismiss, hoverProps, paused } = usePausableAutoDismiss(
+    hideMs,
     () => {
       if (embedded) {
         onDone();
@@ -228,7 +230,7 @@ export function CreateOutcomeCard({
   return (
     <section
       className={cn(
-        "ats-surface relative pointer-events-auto overflow-hidden rounded-xl border p-4 shadow-lg backdrop-blur-md",
+        "ats-surface relative pointer-events-auto overflow-hidden rounded-xl border p-4 pb-5 shadow-lg backdrop-blur-md",
         exiting ? "ats-progress-float-out" : "ats-progress-float-in",
         warning ? "border-warning/50" : "border-border/80",
         className,
@@ -239,6 +241,30 @@ export function CreateOutcomeCard({
       {...hoverProps}
     >
       {header}
+      {hideMs > 0 ? (
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 h-1 overflow-hidden",
+            warning ? "bg-warning/20" : "bg-success/20",
+          )}
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={t("dialogs.autoCloseAria")}
+        >
+          <div
+            key={outcome.id}
+            className={cn(
+              "h-full w-full origin-left ats-toast-progress",
+              warning ? "bg-warning" : "bg-success",
+            )}
+            style={{
+              animationDuration: `${hideMs}ms`,
+              animationPlayState: paused || exiting ? "paused" : "running",
+            }}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }
