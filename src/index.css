@@ -59,6 +59,9 @@
   --ats-scrollbar-thumb: rgba(18, 32, 28, 0.22);
   --ats-scrollbar-thumb-hover: rgba(0, 157, 139, 0.55);
   --ats-scrollbar-track: transparent;
+  --ats-ambient-mark-size: min(92vmin, 820px);
+  --ats-ambient-logo: none;
+  --ats-ambient-opacity: 0;
 }
 
 .dark {
@@ -134,6 +137,8 @@ html.dark[data-theme="team-spirit"] {
   --ats-scrollbar-thumb: rgba(245, 245, 245, 0.18);
   --ats-scrollbar-thumb-hover: rgba(181, 149, 70, 0.55);
   --ats-scrollbar-track: transparent;
+  --ats-ambient-logo: url("/themes/team-spirit/logo.svg");
+  --ats-ambient-opacity: 0.28;
 }
 
 /*
@@ -290,6 +295,8 @@ html.dark[data-theme="spirit-2"] {
   --ats-scrollbar-thumb: rgba(247, 245, 240, 0.22);
   --ats-scrollbar-thumb-hover: rgba(208, 176, 86, 0.55);
   --ats-scrollbar-track: transparent;
+  --ats-ambient-logo: url("/themes/team-spirit/logo.svg");
+  --ats-ambient-opacity: 0.24;
 
   /* Emerald → #48a800 family */
   --color-emerald-50: #f0f8e6;
@@ -1021,6 +1028,8 @@ html.dark[data-theme="fsz"] {
   --ats-scrollbar-thumb: rgba(247, 244, 244, 0.22);
   --ats-scrollbar-thumb-hover: rgba(240, 236, 236, 0.55);
   --ats-scrollbar-track: transparent;
+  --ats-ambient-logo: url("/themes/fsz/logo.png");
+  --ats-ambient-opacity: 0.2;
 
   /* Emerald chips (connected / media-ok) follow success mint */
   --color-emerald-50: #ecfdf5;
@@ -1082,6 +1091,8 @@ html[data-theme="fsz-light"] {
   --ats-scrollbar-thumb: rgba(164, 12, 32, 0.24);
   --ats-scrollbar-thumb-hover: rgba(164, 12, 32, 0.5);
   --ats-scrollbar-track: transparent;
+  --ats-ambient-logo: url("/themes/fsz/logo.png");
+  --ats-ambient-opacity: 0.15;
 
   --color-emerald-50: #ecfdf5;
   --color-emerald-100: #d1fae5;
@@ -1097,56 +1108,30 @@ html[data-theme="fsz-light"] {
 }
 
 /*
- * Spirit ambient mark — oversized SVG, centered behind the UI.
- * Black disk vanishes into the bg; white / gold / red stay as ghost branding.
- * Visibility relies on glass surfaces (translucent --ats-card / surface).
+ * Ambient brand mark (Spirit / FSZ) — on body, below #root (tokens on html).
+ * Not html::before: fixed siblings of body can stack above the app during VT.
  */
-html.dark[data-theme="team-spirit"]::before,
-html.dark[data-theme="spirit-2"]::before {
+body::before {
   content: "";
   position: fixed;
   z-index: 0;
   inset: 0;
   margin: auto;
-  width: min(92vmin, 820px);
-  height: min(92vmin, 820px);
+  width: var(--ats-ambient-mark-size);
+  height: var(--ats-ambient-mark-size);
   pointer-events: none;
-  background: url("/themes/team-spirit/logo.svg") center / contain no-repeat;
-  opacity: 0.28;
+  view-transition-name: none;
+  background-image: var(--ats-ambient-logo);
+  background-position: center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  opacity: var(--ats-ambient-opacity);
   -webkit-mask-image: radial-gradient(
     circle at center,
     #000 40%,
     transparent 95%
   );
   mask-image: radial-gradient(circle at center, #000 40%, transparent 95%);
-}
-
-html.dark[data-theme="spirit-2"]::before {
-  opacity: 0.24;
-}
-
-html.dark[data-theme="fsz"]::before,
-html[data-theme="fsz-light"]::before {
-  content: "";
-  position: fixed;
-  z-index: 0;
-  inset: 0;
-  margin: auto;
-  width: min(92vmin, 820px);
-  height: min(92vmin, 820px);
-  pointer-events: none;
-  background: url("/themes/fsz/logo.png") center / contain no-repeat;
-  opacity: 0.2;
-  -webkit-mask-image: radial-gradient(
-    circle at center,
-    #000 40%,
-    transparent 95%
-  );
-  mask-image: radial-gradient(circle at center, #000 40%, transparent 95%);
-}
-
-html[data-theme="fsz-light"]::before {
-  opacity: 0.15;
 }
 
 /* Team Spirit v1 — light frost on shell only (A/B baseline) */
@@ -1600,6 +1585,20 @@ html.dark[data-theme="deutschland-dark"] [role="menu"] {
   box-shadow: var(--ats-liquid-glass-shadow);
 }
 
+/*
+ * Theme shelf uses role="dialog" but must stay opaque while previewing themes
+ * (Spirit/FSZ dialog glass would show ambient logos through the picker).
+ */
+[data-ats-theme-panel].ats-theme-panel-shell {
+  background: color-mix(in srgb, var(--ats-card) 96%, var(--ats-fg) 4%) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  border-left: 1px solid var(--ats-border) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ats-border) 70%, transparent),
+    0 14px 40px rgba(0, 0, 0, 0.45) !important;
+}
+
 /* Solid plate themes: marker class → opaque card */
 html[data-theme="light"] .ats-liquid-glass,
 html[data-theme="dark"] .ats-liquid-glass,
@@ -1652,10 +1651,10 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  html.dark[data-theme="team-spirit"]::before,
-  html.dark[data-theme="spirit-2"]::before,
-  html.dark[data-theme="fsz"]::before,
-  html[data-theme="fsz-light"]::before {
+  html[data-theme="team-spirit"] body::before,
+  html[data-theme="spirit-2"] body::before,
+  html[data-theme="fsz"] body::before,
+  html[data-theme="fsz-light"] body::before {
     animation: ats-spirit-mark-drift 30s ease-in-out infinite alternate;
   }
 }
@@ -1708,13 +1707,10 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
     height: 100%;
   }
 
-  /* Keep chrome above the Spirit corner mark (::before on html). */
-  #root {
-    position: relative;
-    z-index: 1;
-  }
-
+  /* Ambient mark: body::before z-index 0; app above it. */
   body {
+    position: relative;
+    isolation: isolate;
     margin: 0;
     font-family: var(--font-sans);
     color: var(--ats-fg);
@@ -1728,34 +1724,63 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
     text-rendering: optimizeLegibility;
   }
 
+  #root {
+    position: relative;
+    z-index: 1;
+    isolation: isolate;
+    min-height: 100%;
+  }
+
   ::selection {
     background: var(--ats-primary-soft);
     color: var(--ats-fg);
   }
 }
 
-/* Theme switch — crossfade via View Transitions API (themeStore.applyDomWithTransition). */
+/*
+ * Theme switch — new UI at full opacity; old UI fades out on top (#root VT).
+ * Avoids a 50/50 crossfade that lets the ambient mark read as foreground.
+ */
 @media (prefers-reduced-motion: no-preference) {
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: 320ms;
-    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  ::view-transition-old(*) {
+    z-index: 2;
+    animation: ats-theme-vt-fade-out 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+
+  ::view-transition-new(*) {
+    z-index: 1;
+    animation: none;
+    opacity: 1;
   }
 }
 
-/* Theme picker shelf — slide + backdrop (ThemePanel.tsx, PANEL_ANIM_MS). */
+@keyframes ats-theme-vt-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Theme picker shelf — slide only; no scrim (ThemePanel.tsx, PANEL_ANIM_MS). */
 .ats-theme-panel-root {
   --ats-theme-panel-ease: cubic-bezier(0.32, 0.72, 0, 1);
   pointer-events: none;
 }
 
-.ats-theme-panel-root[data-open="true"] {
+.ats-theme-panel-dismiss,
+.ats-theme-panel-shell {
   pointer-events: auto;
 }
 
-.ats-theme-panel-backdrop {
-  opacity: 0;
-  transition: opacity 340ms ease-out;
+/* Hit target only — not Spirit/FSZ ghost-button hover (button.bg-transparent:hover). */
+.ats-theme-panel-dismiss,
+.ats-theme-panel-dismiss:hover,
+.ats-theme-panel-dismiss:focus-visible {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 .ats-theme-panel-shell {
@@ -1764,27 +1789,14 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
   will-change: transform;
 }
 
-.ats-theme-panel-root[data-open="true"] .ats-theme-panel-backdrop {
-  opacity: 1;
-}
-
 .ats-theme-panel-root[data-open="true"] .ats-theme-panel-shell {
   transform: translate3d(0, 0, 0);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ats-theme-panel-backdrop,
   .ats-theme-panel-shell {
     transition: none;
     will-change: auto;
-  }
-
-  .ats-theme-panel-root[data-open="false"] .ats-theme-panel-backdrop {
-    opacity: 0;
-  }
-
-  .ats-theme-panel-root[data-open="true"] .ats-theme-panel-backdrop {
-    opacity: 1;
   }
 
   .ats-theme-panel-root[data-open="false"] .ats-theme-panel-shell {

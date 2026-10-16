@@ -76,7 +76,7 @@ export function ThemePanel() {
     >
       <button
         type="button"
-        className="ats-theme-panel-backdrop fixed inset-0 cursor-default bg-black/15 dark:bg-black/25"
+        className="ats-theme-panel-dismiss fixed bottom-0 left-0 top-11 right-[min(100vw,20rem)] cursor-default border-0"
         aria-label={t("common.actions.close")}
         onClick={() => setThemePanelOpen(false)}
       />

@@ -233,6 +233,26 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+type ViewTransitionHandle = { finished?: Promise<void> };
+
+function startThemeViewTransition(update: () => void) {
+  const root = document.getElementById("root");
+  const rootStart = root
+    ? (root as HTMLElement & {
+        startViewTransition?: (updateCallback: () => void) => ViewTransitionHandle;
+      }).startViewTransition
+    : undefined;
+
+  // Scoped to #root — ambient mark stays live on body::before (not in snapshots).
+  if (rootStart) {
+    rootStart.call(root, update);
+    return;
+  }
+
+  // Document-level VT captures the full page and flashes the ambient mark on top.
+  update();
+}
+
 /** User-initiated theme changes; instant when View Transitions or motion prefs unavailable. */
 export function applyDomWithTransition(id: ThemeId) {
   const run = () => applyDom(id);
@@ -240,16 +260,7 @@ export function applyDomWithTransition(id: ThemeId) {
     run();
     return;
   }
-  const startViewTransition = (
-    document as Document & {
-      startViewTransition?: (updateCallback: () => void) => unknown;
-    }
-  ).startViewTransition;
-  if (startViewTransition) {
-    startViewTransition.call(document, run);
-  } else {
-    run();
-  }
+  startThemeViewTransition(run);
 }
 
 export function initTheme(): ThemeId {
