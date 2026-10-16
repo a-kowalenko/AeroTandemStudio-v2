@@ -225,7 +225,6 @@ export function UpdateDialog({
                 type="button"
                 className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-expanded={notesOpen}
-                disabled={installing}
                 onClick={() => setNotesOpen((v) => !v)}
               >
                 {t("dialogs.update.patchNotes")}

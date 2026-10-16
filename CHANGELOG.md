@@ -21,8 +21,10 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ### Verbessert
 
-- Darstellung: Theme-Wechsel mit weicher Überblendung; bei „Bewegung reduzieren“ ohne Animation
-- Darstellung: Theme-Auswahl gleitet auf und zu; ausgewähltes Theme ist klarer erkennbar
+- Darstellung: Theme-Wechsel blendet die Oberfläche weich aus — Hintergrund-Logo bleibt dahinter; bei „Bewegung reduzieren“ ohne Animation
+- Darstellung: Theme-Auswahl gleitet auf und zu; ohne Abdunkeln der Arbeitsfläche; Klick links neben dem Panel schließt; Vorschau bei Spirit/FSZ klar lesbar
+- Darstellung: ausgewähltes Theme ist klarer erkennbar
+- Checkboxen: leichter Hover im ungecheckten Zustand
 - Server-Status in der Kopfzeile: Prüfung wartet bei Backup länger — weniger vorzeitige Fehlmeldungen
 - Erfolgskarte nach dem Erstellen: Balken zeigt die Zeit bis zum automatischen Schließen; Maus darüber pausiert den Timer
 - Video drehen: Drehung wird gespeichert und erst beim Erstellen angewendet — Vorschau sofort, ohne langes Neu-Kodieren des Clips
@@ -39,6 +41,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ### Behoben
 
+- Update-Dialog: Patchnotes lassen sich auch während der Installation auf- und zuklappen
+- Spezial-Themes (Spirit, FSZ): Checkboxen in Einstellungen wieder als Checkbox erkennbar — nicht wie Ghost-Buttons
 - SD-Karten-Auswahl: lange Laufwerksnamen werden sauber abgeschnitten, nichts läuft aus dem Feld
 - Erstellen: Video mit gedrehtem Clip friert nach dem ersten Clip nicht mehr ein (Ton lief weiter)
 
