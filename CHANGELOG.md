@@ -42,6 +42,40 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - SD-Karten-Auswahl: lange Laufwerksnamen werden sauber abgeschnitten, nichts läuft aus dem Feld
 - Erstellen: Video mit gedrehtem Clip friert nach dem ersten Clip nicht mehr ein (Ton lief weiter)
 
+## [0.9.0-beta.7] - 2026-10-16
+
+### Neu
+
+- Historie: SD-Backups zum Vorgang — verknüpfte Backup-Ordner, Ordner öffnen, Server-Pfad kopieren
+- Einstellungen → SD-Karte: Backup-Ordner optional mit Kundennamen umbenennen (lokal; optional auch Server-Backup)
+- Buchungssuche: Kunde gefunden, aber nichts gebucht — Auswahl Handcam oder Outside statt Abbruch
+- Server-Status in der Kopfzeile: Verbindungstest mit Live-Ergebnis für Freigabe, Backup und Buchungssuche
+- Einstellungen → Darstellung: Theme-Auswahl mit Vorschau — Hell, Dunkel, Dark Spirit, Liquid Spirit, Royal, Rose, Military, Desert, Lavender, Neon, Petal, Harbor, Ember, Sky, Sunset, Arctic, Forest, Graphite, Prussian Day, Prussian Night, Deutschland, Deutschland Nacht und FSZ (Hell/Dunkel); auch im Setup-Assistenten
+- Setup-Assistent → Verbindung: live sichtbar, ob Kabel oder WLAN verbunden ist; wird kein Server gefunden und nur WLAN ist da, Hinweis dass das oft das Internet-WLAN ist und Kabel zuverlässiger ist
+
+### Verbessert
+
+- Darstellung: Theme-Wechsel mit weicher Überblendung; bei „Bewegung reduzieren“ ohne Animation
+- Darstellung: Theme-Auswahl gleitet auf und zu; ausgewähltes Theme ist klarer erkennbar
+- Server-Status in der Kopfzeile: Prüfung wartet bei Backup länger — weniger vorzeitige Fehlmeldungen
+- Erfolgskarte nach dem Erstellen: Balken zeigt die Zeit bis zum automatischen Schließen; Maus darüber pausiert den Timer
+- Video drehen: Drehung wird gespeichert und erst beim Erstellen angewendet — Vorschau sofort, ohne langes Neu-Kodieren des Clips
+- Erstellen mit gedrehten Clips: auch mit Intro/Outro in einem Durchgang; weniger Zwischenwartezeit
+- QR-Scan: bei Treffer gleitet das Vorschaubild von der Scan-Leiste zur Kundensuche und die Leiste klappt weg; übrige Live-Kacheln räumen sich auf — während der Kundensuche bleibt die Anzeige ruhiger
+- Netzlaufwerk: zuverlässigeres Einbinden und klarere Hinweise bei Verbindungsproblemen
+- Erstellen mit Intro: Fortschrittsschritte folgen dem tatsächlichen Stand zuverlässiger (kein vorzeitiges „fertig“)
+- Medien leeren: Buttons klarer als „Alle Videos leeren“ und „Alle Fotos leeren“
+- Arbeitsfläche: Scrollbalken springt weniger beim Ein- und Ausblenden
+- SD-Karten-Auswahl: Name des Laufwerks steht neben dem Buchstaben
+- Darstellung: Khaki mit klarerem Kontrast
+- Darstellung: Rose Noir mit klarerem Kontrast
+- Darstellung: Desert wärmer und mit klarerem Kontrast
+
+### Behoben
+
+- SD-Karten-Auswahl: lange Laufwerksnamen werden sauber abgeschnitten, nichts läuft aus dem Feld
+- Erstellen: Video mit gedrehtem Clip friert nach dem ersten Clip nicht mehr ein (Ton lief weiter)
+
 ## [0.9.0-beta.6] - 2026-10-15
 
 ### Neu
