@@ -189,8 +189,8 @@ export function SdDriveSelector({
           title={triggerTitle}
           aria-label={t("sd.drive.aria")}
         >
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            <span className="relative shrink-0">
+          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span className="relative shrink-0 overflow-visible">
               <HardDrive
                 className={cn(
                   "h-3.5 w-3.5 text-primary",
@@ -216,9 +216,14 @@ export function SdDriveSelector({
                 ) : null}
               </span>
             ) : (
-              <SelectValue
-                placeholder={watching ? t("sd.drive.monitoring") : t("sd.drive.none")}
-              />
+              <span className="flex min-w-0 flex-1 items-center overflow-hidden">
+                <SelectValue
+                  className="truncate"
+                  placeholder={
+                    watching ? t("sd.drive.monitoring") : t("sd.drive.none")
+                  }
+                />
+              </span>
             )}
           </span>
         </SelectTrigger>
