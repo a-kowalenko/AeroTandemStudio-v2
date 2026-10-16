@@ -34,6 +34,8 @@ function ThemeSwatchPreview({
       className={cn(
         "relative mb-2 overflow-hidden rounded-md ring-1 ring-black/10 dark:ring-white/10",
         compact ? "h-11" : "h-14",
+        selected &&
+          "ring-2 ring-primary ring-offset-1 ring-offset-card dark:ring-offset-card",
       )}
       style={{ background: s.bg }}
       aria-hidden
@@ -112,11 +114,12 @@ export function ThemePicker({
                   onClick={() => onChange(id)}
                   aria-pressed={selected}
                   className={cn(
-                    "rounded-xl border text-left transition-colors",
+                    "rounded-xl border text-left transition-[color,background-color,border-color,box-shadow]",
                     compact ? "p-2" : "p-2.5",
+                    "border-2",
                     selected
-                      ? "border-primary bg-primary-soft shadow-[0_0_0_1px_var(--ats-primary)]"
-                      : "border-border bg-background hover:bg-muted/30",
+                      ? "border-primary bg-primary-soft shadow-[0_0_0_1px_var(--ats-primary),0_4px_14px_color-mix(in_srgb,var(--ats-primary)_22%,transparent)]"
+                      : "border-border/70 bg-background hover:border-border hover:bg-muted/30",
                   )}
                 >
                   <ThemeSwatchPreview
@@ -127,8 +130,10 @@ export function ThemePicker({
                   <div className="min-w-0 px-0.5">
                     <div
                       className={cn(
-                        "truncate text-sm font-medium",
-                        selected ? "text-primary" : "text-foreground",
+                        "truncate text-sm",
+                        selected
+                          ? "font-semibold text-primary"
+                          : "font-medium text-foreground",
                       )}
                     >
                       {t(labelKey)}
