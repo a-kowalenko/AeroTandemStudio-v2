@@ -101,8 +101,8 @@ export type RunHeaderConnectionProbeOpts = {
 };
 
 /**
- * Runs SMB + Backup + AMS in parallel, then Cloud.
- * Emits busy → settled rows via {@link onRows}.
+ * Runs AMS in parallel with SMB; Backup runs after SMB (same host mutex in Rust).
+ * Then Cloud. Emits busy → settled rows via {@link onRows}.
  */
 export async function runHeaderConnectionProbe(
   opts: RunHeaderConnectionProbeOpts,
@@ -121,19 +121,25 @@ export async function runHeaderConnectionProbe(
     return { rows: slotsToRows(slots), allPrimaryOk: true };
   }
 
-  const smbPromise = plan.runSmb
-    ? opts.runSmb()
-    : Promise.resolve(null);
-  const backupPromise =
-    plan.runBackup && plan.backupUrl
-      ? opts.runBackup()
-      : Promise.resolve(null);
   const amsPromise = plan.runAms
-    ? opts.runAms()
+    ? opts.runAms().then((ams) => {
+        if (plan.runAms && ams) {
+          slots.ams = presentAmsConnectionAction({
+            ok: ams.ok,
+            rawMessage: ams.message,
+            displayName: ams.health?.display_name,
+            baseUrl: ams.base_url,
+          });
+          emit();
+        }
+        return ams;
+      })
     : Promise.resolve(null);
 
-  const smbDone = smbPromise.then((smb) => {
-    if (plan.runSmb && smb) {
+  let smb: ConnectionTestResult | null = null;
+  if (plan.runSmb) {
+    smb = await opts.runSmb();
+    if (smb) {
       slots.server = presentServerConnectionAction({
         ok: smb.ok,
         rawMessage: smb.message,
@@ -143,11 +149,12 @@ export async function runHeaderConnectionProbe(
       });
       emit();
     }
-    return smb;
-  });
+  }
 
-  const backupDone = backupPromise.then((backup) => {
-    if (plan.runBackup && plan.backupUrl && backup) {
+  let backup: ConnectionTestResult | null = null;
+  if (plan.runBackup && plan.backupUrl) {
+    backup = await opts.runBackup();
+    if (backup) {
       slots.backup = presentServerConnectionAction({
         ok: backup.ok,
         rawMessage: backup.message,
@@ -160,27 +167,9 @@ export async function runHeaderConnectionProbe(
       });
       emit();
     }
-    return backup;
-  });
+  }
 
-  const amsDone = amsPromise.then((ams) => {
-    if (plan.runAms && ams) {
-      slots.ams = presentAmsConnectionAction({
-        ok: ams.ok,
-        rawMessage: ams.message,
-        displayName: ams.health?.display_name,
-        baseUrl: ams.base_url,
-      });
-      emit();
-    }
-    return ams;
-  });
-
-  const [smb, backup, ams] = await Promise.all([
-    smbDone,
-    backupDone,
-    amsDone,
-  ]);
+  const ams = await amsPromise;
 
   if (plan.runCloud) {
     slots.cloud = busyRow(

@@ -14,7 +14,10 @@ use once_cell::sync::Lazy;
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 
 /// Loud health waits at most this long for a writing pipeline (OPT-23A A4).
-pub const LOUD_HEALTH_LOCK_WAIT: Duration = Duration::from_secs(3);
+/// Must exceed [`super::client::SMB_HEALTH_CONNECT_TIMEOUT`] (5s) so a second
+/// loud health check on the same host waits for the first probe instead of
+/// returning [`HealthConnectGate::LoudBusy`] without SessionSetup.
+pub const LOUD_HEALTH_LOCK_WAIT: Duration = Duration::from_secs(7);
 
 static HOST_LOCKS: Lazy<Mutex<HashMap<String, Arc<Semaphore>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -150,6 +153,7 @@ pub async fn is_busy(host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::smb::client;
     use std::time::Duration;
 
     #[test]
@@ -284,8 +288,11 @@ mod tests {
     }
 
     #[test]
-    fn loud_health_lock_wait_is_three_seconds() {
-        assert_eq!(LOUD_HEALTH_LOCK_WAIT, Duration::from_secs(3));
+    fn loud_health_lock_wait_exceeds_health_connect_budget() {
+        assert!(
+            LOUD_HEALTH_LOCK_WAIT > client::SMB_HEALTH_CONNECT_TIMEOUT,
+            "parallel loud probes must wait for the first SessionSetup"
+        );
     }
 
     #[tokio::test]
