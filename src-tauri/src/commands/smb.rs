@@ -208,6 +208,8 @@ pub async fn upload_to_server(
             );
         } else {
             logging::error("smb", format!("Upload fehlgeschlagen: {}", result.message));
+            crate::diagnostics::capture::capture_smb_fatal(&app, &result.message);
+            crate::diagnostics::request_diagnostics_flush();
         }
         Err(result.message)
     }

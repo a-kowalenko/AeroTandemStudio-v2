@@ -537,6 +537,11 @@
         "backupUrlHint": "Second SMB target for this profile — no failover, just an extra share.",
         "backupUrlPlaceholder": "smb://…/backup"
       },
+      "diagnostics": {
+        "title": "Diagnostics",
+        "switch": "Send error reports",
+        "description": "Error messages and technical data only (e.g. this PC’s name). No media or customer data."
+      },
       "upload": {
         "title": "Upload",
         "afterCreate": "Upload to server after creation",

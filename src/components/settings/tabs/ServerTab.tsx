@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { ServerProfileEditor } from "@/components/ServerProfileEditor";
 import { AmsPathHintsSuggestBanner } from "@/components/AmsPathHintsSuggestBanner";
@@ -16,6 +17,7 @@ import type { SettingsFocusTarget } from "@/store/uiStore";
 import {
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
+import { sendErrorReportsEnabled } from "@/lib/sendErrorReports";
 import {
   formatAmsConnectionDialogTitle,
   formatAmsFoundSuccessViaServerPassword,
@@ -534,6 +536,24 @@ export function ServerTab({
           }
         />
       </SettingsSection>
+
+      {advanced ? (
+      <SettingsSection title={t("settings.server.diagnostics.title")}>
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span className="space-y-0.5">
+            <span className="block">{t("settings.server.diagnostics.switch")}</span>
+            <span className="block text-[11px] text-muted">
+              {t("settings.server.diagnostics.description")}
+            </span>
+          </span>
+          <Switch
+            checked={sendErrorReportsEnabled(draft.send_error_reports)}
+            onCheckedChange={(v) => patchNow("send_error_reports", v === true)}
+            aria-label={t("settings.server.diagnostics.switch")}
+          />
+        </label>
+      </SettingsSection>
+      ) : null}
 
       {advanced ? (
       <SettingsSection title={t("settings.server.upload.title")}>

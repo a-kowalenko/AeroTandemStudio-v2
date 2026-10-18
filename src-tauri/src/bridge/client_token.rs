@@ -17,6 +17,9 @@ use crate::storage::logging;
 /// AMS capability that advertises Cloud JWT issue is configured.
 pub const CAPABILITY_CLOUD_LOOKUP_V1: &str = "cloud-lookup-v1";
 
+/// AMS capability for Bridge diagnostics ingest (Phase 57 / B2).
+pub const CAPABILITY_DIAGNOSTICS_V1: &str = "diagnostics-v1";
+
 /// Proactive refresh when remaining validity is below this (Master: 24h).
 pub const REFRESH_REMAINING_THRESHOLD: Duration = Duration::hours(24);
 
@@ -201,6 +204,84 @@ pub fn health_supports_cloud_lookup(capabilities: &[String]) -> bool {
     capabilities
         .iter()
         .any(|c| c.trim() == CAPABILITY_CLOUD_LOOKUP_V1)
+}
+
+pub fn health_supports_diagnostics(capabilities: &[String]) -> bool {
+    capabilities
+        .iter()
+        .any(|c| c.trim() == CAPABILITY_DIAGNOSTICS_V1)
+}
+
+/// Scopes from JWT payload (`scope` array or space-separated string; optional `scp` array).
+pub fn jwt_scope_claims(access_token: &str) -> Option<Vec<String>> {
+    let payload = decode_jwt_payload_json(access_token)?;
+    scopes_from_claims(&payload)
+}
+
+/// Client-side scope gate (Phase 57). Missing/unparseable JWT → false.
+pub fn token_has_scope(access_token: &str, required: &str) -> bool {
+    let required = required.trim();
+    if required.is_empty() {
+        return false;
+    }
+    jwt_scope_claims(access_token)
+        .map(|scopes| scopes.iter().any(|s| s == required))
+        .unwrap_or(false)
+}
+
+fn decode_jwt_payload_json(access_token: &str) -> Option<serde_json::Value> {
+    use base64::Engine;
+    use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
+
+    let token = access_token.trim();
+    let mut parts = token.split('.');
+    let _header = parts.next()?;
+    let payload_part = parts.next()?;
+    if payload_part.is_empty() {
+        return None;
+    }
+    let bytes = URL_SAFE_NO_PAD
+        .decode(payload_part.as_bytes())
+        .or_else(|_| URL_SAFE.decode(pad_base64url(payload_part).as_bytes()))
+        .ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn pad_base64url(input: &str) -> String {
+    let rem = input.len() % 4;
+    if rem == 0 {
+        return input.to_string();
+    }
+    let pad = 4 - rem;
+    format!("{}{}", input, "=".repeat(pad))
+}
+
+fn scopes_from_claims(value: &serde_json::Value) -> Option<Vec<String>> {
+    if let Some(arr) = value.get("scope").and_then(|v| v.as_array()) {
+        let scopes: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+            .filter(|s| !s.is_empty())
+            .collect();
+        return Some(scopes);
+    }
+    if let Some(s) = value.get("scope").and_then(|v| v.as_str()) {
+        let scopes: Vec<String> = s
+            .split_whitespace()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        return Some(scopes);
+    }
+    if let Some(arr) = value.get("scp").and_then(|v| v.as_array()) {
+        let scopes: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+            .filter(|s| !s.is_empty())
+            .collect();
+        return Some(scopes);
+    }
+    Some(Vec::new())
 }
 
 pub fn stored_from_response(
@@ -461,6 +542,8 @@ mod tests {
             "cloud-lookup-v1".into()
         ]));
         assert!(!health_supports_cloud_lookup(&["lookup".into()]));
+        assert!(health_supports_diagnostics(&["diagnostics-v1".into()]));
+        assert!(!health_supports_diagnostics(&["lookup".into()]));
     }
 
     #[test]
@@ -477,5 +560,37 @@ mod tests {
         assert_eq!(stored.ams_server_instance_id, "ams-xyz");
         assert_eq!(stored.cloud_base_url, "https://cloud.example");
         assert_eq!(stored.access_token, "jwt");
+    }
+
+    fn jwt_with_payload(payload: serde_json::Value) -> String {
+        let payload_b64 = base64::Engine::encode(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+            payload.to_string().as_bytes(),
+        );
+        format!("eyJhbGciOiJIUzI1NiJ9.{payload_b64}.sig")
+    }
+
+    #[test]
+    fn token_has_scope_reads_scope_array() {
+        let jwt = jwt_with_payload(serde_json::json!({
+            "scope": ["customer.lookup", "diagnostics.report"]
+        }));
+        assert!(token_has_scope(&jwt, "diagnostics.report"));
+        assert!(token_has_scope(&jwt, "customer.lookup"));
+        assert!(!token_has_scope(&jwt, "other"));
+    }
+
+    #[test]
+    fn token_has_scope_reads_space_separated_scope_string() {
+        let jwt = jwt_with_payload(serde_json::json!({
+            "scope": "customer.lookup diagnostics.report"
+        }));
+        assert!(token_has_scope(&jwt, "diagnostics.report"));
+    }
+
+    #[test]
+    fn token_has_scope_false_for_garbage_jwt() {
+        assert!(!token_has_scope("not-a-jwt", "diagnostics.report"));
+        assert!(!token_has_scope("", "diagnostics.report"));
     }
 }

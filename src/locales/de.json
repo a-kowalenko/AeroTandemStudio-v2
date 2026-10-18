@@ -537,6 +537,11 @@
         "backupUrlHint": "Zweites SMB-Ziel für dieses Profil — kein Failover, nur zusätzliche Freigabe.",
         "backupUrlPlaceholder": "smb://…/backup"
       },
+      "diagnostics": {
+        "title": "Diagnostik",
+        "switch": "Fehlerberichte senden",
+        "description": "Nur Fehlermeldungen und technische Daten (z. B. PC-Name des Rechners). Keine Medien oder Kundendaten."
+      },
       "upload": {
         "title": "Upload",
         "afterCreate": "Nach Erstellung auf Server hochladen",

@@ -1,5 +1,6 @@
 mod bridge;
 mod commands;
+mod diagnostics;
 mod netlink;
 mod constants;
 mod media;
@@ -137,6 +138,8 @@ pub fn run() {
                     let _ = handle.emit("log-lines", batch);
                 }
             });
+            diagnostics::init_cloud_outbox_transport(app.handle().clone());
+            diagnostics::spawn_diagnostics_outbox_flusher(app.handle().clone());
             smb::health_event::install(app.handle().clone());
 
             #[cfg(desktop)]

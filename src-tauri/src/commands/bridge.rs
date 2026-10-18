@@ -1,7 +1,7 @@
 //! Tauri IPC for AMS LAN Bridge client (Phase 13 / P4).
 
 use chrono::Utc;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::bridge::{
     self, client_token, cloud_lookup, BridgeHealthResult, DiscoveredBridge, HandoffCancelResponse,
@@ -139,6 +139,7 @@ pub async fn ams_bridge_health(
 
 #[tauri::command]
 pub async fn ams_bridge_customer_lookup(
+    app: AppHandle,
     state: State<'_, ConfigState>,
     customer_id: String,
     booking_id: String,
@@ -166,6 +167,7 @@ pub async fn ams_bridge_customer_lookup(
             if err.should_clear_cloud_token() {
                 let _ = clear_cloud_lookup_token(&state);
             }
+            crate::diagnostics::capture::capture_routed_lookup_error(&app, &err);
             Err(err.into())
         }
     }

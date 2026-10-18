@@ -27,7 +27,9 @@
 | `@docs/phases/open/54-ui-themes.md` | Phase 54 (UI-Themes · Team Spirit) |
 | `@docs/phases/open/55-theme-catalog.md` | Phase 55 (Theme-Katalog · Settings-only) |
 | `@docs/phases/open/56-vorgang-backup-link-rename.md` | Phase 56 (Vorgang ↔ SD-Backup + Rename lokal/SMB) |
+| `@docs/phases/open/57-client-diagnostics.md` | Phase 57 (Client-Diagnostik · stille Fehlerberichte) |
 | `@docs/CLOUD_LOOKUP_FALLBACK_PLAN.md` | Phase 53 Master (ATS · AMS · Cloud) |
+| `@docs/CLIENT_DIAGNOSTICS_PLAN.md` | Phase 57 Master (ATS · AMS · Cloud) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
 | `@docs/opt/open/21-capcut-export.md` | OPT-21 (offen) |
 | `@docs/optimization_plan.md` | OPT-Index / Tracker |
@@ -126,6 +128,7 @@ Details: `@AGENTS.md`
 | 54 | UI-Themes (Team Spirit Spezialdesign) | ✅ | [open/54](phases/open/54-ui-themes.md) |
 | 55 | Theme-Katalog (Royal/Rose/Military/Sky/Sunset/Arctic/Forest/Graphite/FSZ) + Settings-only | ✅ | [open/55](phases/open/55-theme-catalog.md) |
 | 56 | Vorgang ↔ SD-Backup verknüpfen + Umbenennen (lokal + SMB) | ⬜ | [open/56](phases/open/56-vorgang-backup-link-rename.md) |
+| 57 | Client-Diagnostik (stille Fehlerberichte → Cloud) | ✅ ATS R0–R5 | [open/57](phases/open/57-client-diagnostics.md) · [Master](CLIENT_DIAGNOSTICS_PLAN.md) · manuell §8 nach Cloud D* + AMS B* |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 
@@ -189,9 +192,15 @@ Regeln: @AGENTS.md
 Nur 56A.
 ```
 
+```
+Implementiere Phase 57 Slice R0 aus @docs/phases/open/57-client-diagnostics.md
+Regeln: @AGENTS.md
+Nur R0. Danach cargo test && npm run check.
+```
+
 **Linux (Phase 15, erledigt):** `@docs/LINUX_BUILD.md`  
 **Performance (OPT-21):** `@docs/opt/open/21-capcut-export.md` · Index `@docs/optimization_plan.md`
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-10-15 (Phase 56 Vorgang-Backup-Link + Rename).*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-10-18 (Phase 57 Client-Diagnostik Plan).*

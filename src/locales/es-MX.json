@@ -537,6 +537,11 @@
         "backupUrlHint": "Segundo destino SMB de este perfil — sin conmutación automática, solo un recurso adicional.",
         "backupUrlPlaceholder": "smb://…/backup"
       },
+      "diagnostics": {
+        "title": "Diagnóstico",
+        "switch": "Enviar informes de error",
+        "description": "Solo mensajes de error y datos técnicos (p. ej. el nombre de esta PC). Sin medios ni datos de clientes."
+      },
       "upload": {
         "title": "Subida",
         "afterCreate": "Subir al servidor tras crear",

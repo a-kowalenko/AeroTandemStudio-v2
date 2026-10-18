@@ -8,6 +8,7 @@
 | `@docs/IMPLEMENTATION_PLAN.md` | Index / Tracker (schlank) |
 | `@docs/phases/open/…` | **Die eine offene Phase-Spec** |
 | `@docs/CLOUD_LOOKUP_FALLBACK_PLAN.md` | Phase 53 Master (ATS · AMS · Cloud) |
+| `@docs/CLIENT_DIAGNOSTICS_PLAN.md` | Phase 57 Master (ATS · AMS · Cloud) |
 | `@docs/phases/ARCHIVE.md` | Nur Regression / erledigte Spec |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt) |
 | `@docs/opt/open/…` | **Die eine offene OPT-Spec** |
@@ -76,8 +77,9 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 - ✅ **Phase 54** UI-Themes (Light/Dark + Team Spirit Spezialdesign, Logo, Boot-Splash) · Spec: `@docs/phases/open/54-ui-themes.md`
 - ✅ **Phase 55** Theme-Katalog (Royal×2, Rose×2, Military×2, Sky×2, Sunset, Arctic, Forest, Graphite, FSZ×2) + Settings-only · Spec: `@docs/phases/open/55-theme-catalog.md`
 - ⬜ **Phase 56** Vorgang ↔ SD-Backup verknüpfen + Umbenennen (lokal + SMB) · Spec: `@docs/phases/open/56-vorgang-backup-link-rename.md` (Slices 56A–D)
+- ✅ **Phase 57** Client-Diagnostik (stille Fehlerberichte, PC-Name, Breadcrumbs) · Spec: `@docs/phases/open/57-client-diagnostics.md` · Master: `@docs/CLIENT_DIAGNOSTICS_PLAN.md` · manuell §8 nach Cloud D* + AMS B*
 
-**Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3 · Phase 53 E2E nach Cloud+AMS-Deploy  
+**Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3 · Phase 53 E2E nach Cloud+AMS-Deploy · Phase 57 manuelle Abnahme §8 nach Cloud D* + AMS B*  
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional Linux-VM / Windows-WPD-Abnahme)*
 
 ### Performance-Backlog
@@ -141,6 +143,12 @@ Nur 54.
 Implementiere Phase 56 Slice A aus @docs/phases/open/56-vorgang-backup-link-rename.md
 Regeln: @AGENTS.md
 Nur 56A.
+```
+
+```
+Implementiere Phase 57 Slice R0 aus @docs/phases/open/57-client-diagnostics.md
+Regeln: @AGENTS.md
+Nur R0.
 ```
 
 **Phase 15 (Linux, erledigt):** Prompt in `@docs/LINUX_BUILD.md` 

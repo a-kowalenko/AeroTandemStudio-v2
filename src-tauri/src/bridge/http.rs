@@ -24,6 +24,10 @@ pub enum Endpoint {
     Lookup,
     /// Direct Cloud booking lookup (Phase 53 / T1); same budget as AMS Lookup.
     CloudLookup,
+    /// Direct Cloud diagnostics ingest (Phase 57 / R3); same budget as Cloud Lookup.
+    CloudDiagnostics,
+    /// AMS Bridge diagnostics ingest (Phase 57 / R4).
+    AmsDiagnostics,
     ClientToken,
     JobStatus,
     HandoffReady,
@@ -36,6 +40,8 @@ impl Endpoint {
             Endpoint::Health => "health",
             Endpoint::Lookup => "Lookup",
             Endpoint::CloudLookup => "Cloud-Lookup",
+            Endpoint::CloudDiagnostics => "Cloud-Diagnostics",
+            Endpoint::AmsDiagnostics => "diagnostics",
             Endpoint::ClientToken => "client-token",
             Endpoint::JobStatus => "Job-Status",
             Endpoint::HandoffReady => "handoff/ready",
@@ -45,7 +51,7 @@ impl Endpoint {
 
     /// True for Cloud endpoints (Display prefix differs from AMS-Bridge).
     pub fn is_cloud(self) -> bool {
-        matches!(self, Endpoint::CloudLookup)
+        matches!(self, Endpoint::CloudLookup | Endpoint::CloudDiagnostics)
     }
 
     /// Total request budget (connect is capped separately by `CONNECT_TIMEOUT`).
@@ -54,7 +60,11 @@ impl Endpoint {
         Duration::from_secs(match self {
             Endpoint::Health | Endpoint::JobStatus => 5,
             Endpoint::HandoffReady | Endpoint::HandoffCancel => 8,
-            Endpoint::Lookup | Endpoint::CloudLookup | Endpoint::ClientToken => 12,
+            Endpoint::Lookup
+            | Endpoint::CloudLookup
+            | Endpoint::CloudDiagnostics
+            | Endpoint::AmsDiagnostics
+            | Endpoint::ClientToken => 12,
         })
     }
 }
@@ -452,6 +462,8 @@ mod tests {
             Endpoint::Health,
             Endpoint::Lookup,
             Endpoint::CloudLookup,
+            Endpoint::CloudDiagnostics,
+            Endpoint::AmsDiagnostics,
             Endpoint::ClientToken,
             Endpoint::JobStatus,
             Endpoint::HandoffReady,

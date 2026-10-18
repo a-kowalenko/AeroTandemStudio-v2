@@ -3,6 +3,7 @@ import type { AppConfig } from "../lib/tauri";
 import { getConfig, resetConfig, saveConfig } from "../lib/tauri";
 import { normalizeUiLanguage } from "../i18n/types";
 import { parseLogLevelFilter } from "./logStore";
+import { sendErrorReportsEnabled } from "../lib/sendErrorReports";
 
 function normalizeConfig(config: AppConfig): AppConfig {
   const retention = (n: number | undefined, fallback: number) => {
@@ -22,6 +23,7 @@ function normalizeConfig(config: AppConfig): AppConfig {
     settings_ui_mode:
       config.settings_ui_mode === "advanced" ? "advanced" : "simple",
     log_min_level: parseLogLevelFilter(config.log_min_level ?? "info"),
+    send_error_reports: sendErrorReportsEnabled(config.send_error_reports),
     auto_cleanup_jobs_enabled: Boolean(config.auto_cleanup_jobs_enabled),
     auto_cleanup_jobs_retention_days: retention(
       config.auto_cleanup_jobs_retention_days,

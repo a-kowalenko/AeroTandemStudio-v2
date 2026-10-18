@@ -108,9 +108,16 @@ pub struct UploadResult {
 
 impl UploadResult {
     pub(crate) fn fail(message: impl Into<String>) -> Self {
+        let message = message.into();
+        if message.trim() != WORKFLOW_CANCELLED {
+            crate::diagnostics::breadcrumbs::push_breadcrumb(
+                crate::diagnostics::actions::SMB_UPLOAD_FAIL,
+                None,
+            );
+        }
         Self {
             success: false,
-            message: message.into(),
+            message,
             remote_path: String::new(),
             staging_root: None,
             smb_host: None,

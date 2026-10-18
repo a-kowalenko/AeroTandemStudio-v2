@@ -308,6 +308,9 @@ pub struct AppConfig {
     /// Minimum log level written to `app.log` / console IPC: `debug` | `info` | `warn` | `error`.
     #[serde(default = "default_log_min_level")]
     pub log_min_level: String,
+    /// Phase 57: send redacted error reports + technical context to Cloud/AMS (default on).
+    #[serde(default = "default_true")]
+    pub send_error_reports: bool,
     /// Optional AMS LAN Bridge base URL (`http://host:8787`).
     #[serde(default)]
     pub ams_bridge_url: String,
@@ -1201,6 +1204,7 @@ impl Default for AppConfig {
             ui_language: default_ui_language(),
             beta_updates_enabled: false,
             log_min_level: default_log_min_level(),
+            send_error_reports: true,
             ams_bridge_url: String::new(),
             ams_bridge_token: String::new(),
             ams_bridge_instance_id: String::new(),
@@ -1777,6 +1781,20 @@ mod tests {
         let cfg = AppConfig::default();
         assert_eq!(cfg.settings_ui_mode, "simple");
         assert!(!cfg.setup_completed);
+    }
+
+    #[test]
+    fn send_error_reports_defaults_on() {
+        assert!(AppConfig::default().send_error_reports);
+        let cfg: AppConfig = serde_json::from_str(r#"{ "ort": "Calden" }"#).unwrap();
+        assert!(cfg.send_error_reports);
+        let merged = merge_with_defaults(serde_json::json!({ "ort": "Calden" })).unwrap();
+        assert!(merged.send_error_reports);
+        let off = merge_with_defaults(serde_json::json!({
+            "send_error_reports": false
+        }))
+        .unwrap();
+        assert!(!off.send_error_reports);
     }
 
     #[test]

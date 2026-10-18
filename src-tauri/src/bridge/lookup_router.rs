@@ -13,6 +13,8 @@ use super::{
     build_ats_bridge_identity, bridge_configured, client_token, customer_lookup,
     resolve_bridge_base_url, LookupRequest, LookupResponse,
 };
+use crate::diagnostics::actions::{BRIDGE_LOOKUP, BRIDGE_LOOKUP_OK};
+use crate::diagnostics::breadcrumbs::push_breadcrumb;
 use crate::storage::config::AppConfig;
 use crate::storage::logging;
 
@@ -115,6 +117,7 @@ pub async fn routed_customer_lookup(
     request: &LookupRequest,
     now: DateTime<Utc>,
 ) -> Result<RoutedLookupOk, RoutedLookupError> {
+    push_breadcrumb(BRIDGE_LOOKUP, None);
     let cloud_ok = cloud_usable_now(config, now);
     let ams_ok = bridge_configured(config);
     let identity = build_ats_bridge_identity(config);
@@ -137,10 +140,16 @@ pub async fn routed_customer_lookup(
                 }
             };
             match customer_lookup(&base, &config.ams_bridge_token, request, &identity).await {
-                Ok(response) => Ok(RoutedLookupOk {
-                    response,
-                    via: LookupBackend::Ams,
-                }),
+                Ok(response) => {
+                    push_breadcrumb(
+                        BRIDGE_LOOKUP_OK,
+                        Some(serde_json::json!({ "via": "ams" })),
+                    );
+                    Ok(RoutedLookupOk {
+                        response,
+                        via: LookupBackend::Ams,
+                    })
+                }
                 Err(ams_err) if should_fallback_to_cloud(&ams_err, cloud_ok) => {
                     logging::info(
                         "bridge",
@@ -176,10 +185,16 @@ async fn lookup_via_cloud(
     )
     .await
     {
-        Ok(response) => Ok(RoutedLookupOk {
-            response,
-            via: LookupBackend::Cloud,
-        }),
+        Ok(response) => {
+            push_breadcrumb(
+                BRIDGE_LOOKUP_OK,
+                Some(serde_json::json!({ "via": "cloud" })),
+            );
+            Ok(RoutedLookupOk {
+                response,
+                via: LookupBackend::Cloud,
+            })
+        }
         Err(e) => Err(RoutedLookupError::Cloud(e)),
     }
 }

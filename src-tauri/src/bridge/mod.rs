@@ -5,7 +5,7 @@
 pub mod client_token;
 pub mod cloud_lookup;
 pub mod lookup_router;
-mod http;
+pub(crate) mod http;
 mod lookup_map;
 mod mdns;
 
@@ -74,6 +74,11 @@ impl BridgeHealth {
                 .as_ref()
                 .map(|h| !h.base_url.trim().is_empty())
                 .unwrap_or(false)
+    }
+
+    /// True when AMS advertises diagnostics ingest (`diagnostics-v1`).
+    pub fn supports_diagnostics(&self) -> bool {
+        client_token::health_supports_diagnostics(&self.capabilities)
     }
 }
 
@@ -205,12 +210,36 @@ fn prepare(base_url: &str, token: &str) -> Result<(String, String), BridgeError>
     Ok((base, auth_header(token)?))
 }
 
+/// Same as [`prepare`] for diagnostics / other bridge HTTP modules.
+pub(crate) fn bridge_prepare(base_url: &str, token: &str) -> Result<(String, String), BridgeError> {
+    prepare(base_url, token)
+}
+
 #[derive(Debug, Clone)]
 pub struct AtsBridgeIdentity {
     instance_id: String,
     hostname: String,
     ats_version: String,
     ats_app: String,
+}
+
+impl AtsBridgeIdentity {
+    #[allow(dead_code)] // R3 Cloud/AMS identity headers
+    pub fn instance_id(&self) -> &str {
+        &self.instance_id
+    }
+
+    pub fn hostname(&self) -> &str {
+        &self.hostname
+    }
+
+    pub fn ats_version(&self) -> &str {
+        &self.ats_version
+    }
+
+    pub fn ats_app(&self) -> &str {
+        &self.ats_app
+    }
 }
 
 pub fn build_ats_bridge_identity(config: &AppConfig) -> AtsBridgeIdentity {

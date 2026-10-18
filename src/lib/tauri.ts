@@ -182,6 +182,8 @@ export type AppConfig = {
   beta_updates_enabled: boolean;
   /** Min log level for file + console IPC: "debug" | "info" | "warn" | "error". */
   log_min_level: string;
+  /** Phase 57: send redacted error reports + technical context (default true). */
+  send_error_reports: boolean;
   /** Optional AMS LAN Bridge base URL (`http://host:8787`). */
   ams_bridge_url: string;
   /** Shared bearer token for AMS Bridge. */

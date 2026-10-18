@@ -1158,6 +1158,14 @@ pub async fn create_job(
         ),
     );
 
+    crate::diagnostics::breadcrumbs::push_breadcrumb(
+        crate::diagnostics::actions::EXPORT_START,
+        Some(serde_json::json!({
+            "videos": video_paths.len(),
+            "photos": photo_paths.len(),
+        })),
+    );
+
     let kunde_for_history = kunde.clone();
     let videos_for_history = video_paths.clone();
     let photos_for_history = photo_paths.clone();
@@ -1261,9 +1269,20 @@ pub async fn create_job(
                     );
                 }
             }
+            crate::diagnostics::breadcrumbs::push_breadcrumb(
+                crate::diagnostics::actions::EXPORT_DONE,
+                None,
+            );
+            crate::diagnostics::request_diagnostics_flush();
             Ok(res)
         }
         Err(e) => {
+            crate::diagnostics::breadcrumbs::push_breadcrumb(
+                crate::diagnostics::actions::EXPORT_FAIL,
+                None,
+            );
+            crate::diagnostics::capture::capture_export_fatal(&app, &e);
+            crate::diagnostics::request_diagnostics_flush();
             log_job_failure("create", "Vorgang", &e);
             Err(e)
         }
