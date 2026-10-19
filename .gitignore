@@ -23,6 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
+# OPT-27 local forensics clips (no binaries in git)
+docs/opt/fixtures/27-orientation/_local_probe/
+
 # FFmpeg sidecar binaries (download separately — see resources/ffmpeg/README.md)
 src-tauri/resources/ffmpeg/win/ffmpeg.exe
 src-tauri/resources/ffmpeg/win/*.zip

@@ -2597,7 +2597,8 @@ pub fn create_video(
         )?;
 
         let cb = body_concat_overall_progress(Arc::clone(&on_progress));
-        emit_step_start(&on_progress, "Füge kodierte Clips zusammen…");
+        emit_step_start(&on_progress, "Füge Clips zusammen…");
+        let orient_harmonize = rotations.iter().all(|&d| d == 0);
         concat::concat_videos_with_opts(
             ffmpeg,
             &clip_outs,
@@ -2607,6 +2608,7 @@ pub fn create_video(
             encode_crf,
             &options.body_concat_mode,
             on_body_concat_fallback.as_ref(),
+            orient_harmonize,
             on_reencode.as_ref(),
         )?;
         encoder_used = v_params.vcodec.clone();
@@ -2617,6 +2619,7 @@ pub fn create_video(
             emit_step_start(&on_progress, "Füge Clips zusammen…");
         }
         let cb = body_concat_overall_progress(Arc::clone(&on_progress));
+        let orient_harmonize = rotations.iter().all(|&d| d == 0);
         concat::concat_videos_with_opts(
             ffmpeg,
             video_paths,
@@ -2626,6 +2629,7 @@ pub fn create_video(
             options.crf,
             &options.body_concat_mode,
             on_body_concat_fallback.as_ref(),
+            orient_harmonize,
             on_reencode.as_ref(),
         )?;
         body_target

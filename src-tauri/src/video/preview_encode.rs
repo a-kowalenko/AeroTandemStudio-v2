@@ -15,6 +15,8 @@ use crate::model::Kunde;
 use crate::storage::AppConfig;
 
 use super::concat::{self, ConcatError, VideoCodec};
+use super::orient_harmonize::{plan_orientation_harmonization, OrientPlan};
+use super::probe_cache;
 use super::encode_profile::{EncodeProfile, FpsMode, ScaleMode};
 use super::encoding_quality::{
     majority_body_codec, strip_hwaccel_input_params, VideoCodecPreference,
@@ -302,6 +304,35 @@ fn stream_copy_encoding_plan() -> EncodingPlan {
         needs_combined_reencoding: false,
         target_codec: None,
         reencode_reason: None,
+    }
+}
+
+/// OPT-27: distinguish partial orientation bake from full-timeline re-encode in preview hints.
+fn preview_orient_reencode_hint(ffmpeg: &Path, paths: &[String]) -> Option<String> {
+    let mut keys = Vec::with_capacity(paths.len());
+    for path in paths {
+        let stderr = ffmpeg_probe_stderr(ffmpeg, path).ok()?;
+        keys.push(probe_cache::cached_probe_from_stderr(&stderr)?.compatible_key);
+    }
+    let total = paths.len();
+    match plan_orientation_harmonization(&keys) {
+        OrientPlan::PartialBake { indices } => {
+            let n = indices.len();
+            if n == 1 {
+                Some(format!(
+                    "Orientierung: 1 von {total} Clips muss neu kodiert werden"
+                ))
+            } else if n < total {
+                Some(format!(
+                    "Orientierung: {n} von {total} Clips müssen neu kodiert werden"
+                ))
+            } else {
+                Some(format!(
+                    "Orientierung: alle {total} Clips müssen neu kodiert werden"
+                ))
+            }
+        }
+        _ => None,
     }
 }
 
@@ -745,12 +776,17 @@ pub fn generate_preview(
 
     on_progress(progress_from_times(0.0, 100.0, "preview-analyse"));
     let format_info = probe_preview_formats(ffmpeg, video_paths)?;
-    let plan = resolve_encoding_plan(
+    let mut plan = resolve_encoding_plan(
         &config.video_codec,
         &config.encoding_strategy,
         &format_info,
         config.reencode_matching_clips,
     );
+    if plan.needs_clip_reencoding {
+        if let Some(hint) = preview_orient_reencode_hint(ffmpeg, video_paths) {
+            plan.reencode_reason = Some(hint);
+        }
+    }
 
     // Intro / Outro path: reuse create_video into the work dir so Preview == Create
     // (kunde drives overlay text; Outro asset is appended identically).
@@ -1054,6 +1090,7 @@ pub fn generate_preview(
             crf,
             &config.body_concat_mode,
             None, // preview: silent legacy fallback if fast fails
+            true,
             on_reencode.as_ref(),
         )?;
         encoder_used = outcome.codec;

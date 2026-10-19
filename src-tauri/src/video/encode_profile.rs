@@ -232,9 +232,13 @@ impl EncodeProfile {
         let crf = clamp_crf(i32::from(base_crf), 18);
 
         let mut profile = match kind {
-            ReencodeKind::Rotate => {
+            ReencodeKind::Rotate | ReencodeKind::OrientPartial => {
                 let mut p = Self::max_quality(hw_accel);
-                p.recommend_reason = Some("rotate".into());
+                p.recommend_reason = Some(if matches!(kind, ReencodeKind::Rotate) {
+                    "rotate".into()
+                } else {
+                    "orient_partial".into()
+                });
                 p
             }
             ReencodeKind::PreviewClips
@@ -281,7 +285,7 @@ impl EncodeProfile {
             }
         }
         profile.hw_accel = hw_accel;
-        if matches!(kind, ReencodeKind::Rotate) {
+        if matches!(kind, ReencodeKind::Rotate | ReencodeKind::OrientPartial) {
             // Keep max-quality CRF unless config was already stricter.
             if crf < profile.crf {
                 profile.crf = crf;

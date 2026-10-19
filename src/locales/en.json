@@ -938,7 +938,8 @@
         "preview_remux_fallback": "Preview remux",
         "remux_fallback": "Remux",
         "forced_codec": "Target codec",
-        "rotate": "Rotate"
+        "rotate": "Rotate",
+        "orient_partial": "Adjust orientation"
       },
       "presets": {
         "balanced": "Balanced",
@@ -957,7 +958,8 @@
         "preview_remux_fallback": "Preview remux failed — re-encode required.",
         "remux_fallback": "Remux failed — the video will be re-encoded.",
         "forced_codec": "The selected video codec differs from the source codec — re-encoding is required.",
-        "rotate": "Rotation requires re-encoding the pixels."
+        "rotate": "Rotation requires re-encoding the pixels.",
+        "orient_partial": "At least one clip differs in orientation and will be re-encoded individually so stream-copy concat can proceed."
       }
     },
     "lowMedia": {

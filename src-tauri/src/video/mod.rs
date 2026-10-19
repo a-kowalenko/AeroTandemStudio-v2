@@ -15,6 +15,7 @@ pub mod intro_mux_fallback;
 pub mod keyframe_cache;
 pub mod low_media;
 pub mod marker;
+pub mod orient_harmonize;
 pub mod parallel;
 pub mod prep_cache;
 pub mod preview_encode;

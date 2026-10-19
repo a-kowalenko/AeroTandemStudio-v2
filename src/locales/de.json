@@ -938,7 +938,8 @@
         "preview_remux_fallback": "Vorschau-Remux",
         "remux_fallback": "Remux",
         "forced_codec": "Ziel-Codec",
-        "rotate": "Drehen"
+        "rotate": "Drehen",
+        "orient_partial": "Orientierung anpassen"
       },
       "presets": {
         "balanced": "Ausgewogen",
@@ -957,7 +958,8 @@
         "preview_remux_fallback": "Remux der Vorschau ist fehlgeschlagen — Neu-Kodierung erforderlich.",
         "remux_fallback": "Remux ist fehlgeschlagen — das Video wird neu kodiert.",
         "forced_codec": "Der eingestellte Video-Codec weicht vom Quell-Codec ab — Neu-Kodierung erforderlich.",
-        "rotate": "Drehen erfordert eine Neu-Kodierung der Pixel."
+        "rotate": "Drehen erfordert eine Neu-Kodierung der Pixel.",
+        "orient_partial": "Mindestens ein Clip weicht in der Orientierung ab und wird einzeln neu kodiert, damit das Zusammenfügen per Kopie möglich bleibt."
       }
     },
     "lowMedia": {

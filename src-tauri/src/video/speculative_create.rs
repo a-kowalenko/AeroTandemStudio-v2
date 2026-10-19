@@ -47,7 +47,7 @@ use crate::video::processor::{
     CreateVideoResult, IntroMuxAskFn, ProcessorError,
 };
 use crate::video::progress::EncodeProgress;
-use crate::video::reencode_confirm::{ReencodeAskFn, ReencodeDecision};
+use crate::video::reencode_confirm::{ReencodeAskFn, ReencodeDecision, ReencodeKind};
 use crate::video::watermark::{
     create_photo_with_watermark, create_video_with_watermark, resolve_stamp,
 };
@@ -1958,7 +1958,12 @@ fn run_staging_job(
         })
     };
 
-    let on_reencode: ReencodeAskFn = Arc::new(|_intent| Ok(ReencodeDecision::Abort));
+    let on_reencode: ReencodeAskFn = Arc::new(|intent| {
+        if matches!(intent.kind, ReencodeKind::OrientPartial) {
+            return Ok(ReencodeDecision::Proceed(intent.recommended.clone()));
+        }
+        Ok(ReencodeDecision::Abort)
+    });
     let on_body_fallback: BodyConcatAskFn = Arc::new(|_reason| Ok(BodyConcatChoice::Abort));
     let on_intro: IntroMuxAskFn = Arc::new(|_reason| Ok(IntroMuxChoice::WithoutIntro));
 

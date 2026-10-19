@@ -27,6 +27,10 @@ use super::ffmpeg::{
 use super::hw_accel::{detect_hardware, EncodingParams};
 use super::parallel::{ParallelError, ParallelVideoProcessor};
 use super::prep_cache;
+use super::orient_harmonize::{
+    harmonize_clip_orientations_copy, harmonize_clip_orientations_partial_bake,
+    plan_orientation_harmonization, OrientHarmonizeError, OrientPartialBakeOptions, OrientPlan,
+};
 use super::probe::{compatible_stream_key_from_probe, CompatibleStreamKey};
 use super::probe_cache::{self, CachedClipProbe};
 use super::progress::{progress_from_times_with_task, EncodeProgress};
@@ -333,6 +337,159 @@ pub fn build_prep_compatible_args(
     }
     args.push(output.to_string());
     args
+}
+
+/// OPT-27: stream-copy remux so soft-rotation matches Clip 1 (reference clockwise degrees).
+///
+/// Like [`build_prep_compatible_args`] but without AUD/tag bitstream filters (harmonize only).
+pub fn build_orient_copy_harmonize_args(
+    input: &str,
+    output: &str,
+    has_audio: bool,
+    reference_clockwise_deg: u32,
+) -> Vec<String> {
+    if reference_clockwise_deg == 0 {
+        let mut args = vec!["-y".into(), "-fflags".into(), "+genpts".into()];
+        args.extend([
+            "-noautorotate".into(),
+            "-display_rotation".into(),
+            "0".into(),
+            "-i".into(),
+            input.to_string(),
+            "-map".into(),
+            "0:v:0".into(),
+        ]);
+        map_audio_if(has_audio, &mut args);
+        args.extend([
+            "-c".into(),
+            "copy".into(),
+            "-avoid_negative_ts".into(),
+            "make_zero".into(),
+            "-metadata".into(),
+            "rotate=0".into(),
+            "-metadata:s:v:0".into(),
+            "rotate=0".into(),
+            output.to_string(),
+        ]);
+        return args;
+    }
+    build_display_rotation_remux_args(
+        input,
+        output,
+        reference_clockwise_deg,
+        has_audio,
+        None,
+    )
+}
+
+/// Temp MP4 filename for OPT-27 copy-harmonize (not prep-cache eligible).
+pub fn orient_copy_harmonize_segment_filename(clip_index: usize) -> String {
+    format!("orient_copy_{clip_index}.mp4")
+}
+
+/// Temp MP4 filename for OPT-27 partial orientation bake (not prep-cache eligible).
+pub fn orient_partial_bake_segment_filename(clip_index: usize) -> String {
+    format!("orient_bake_{clip_index}.mp4")
+}
+
+/// `-vf` chain for partial bake: decode with autorotate, fit reference coded frame, match ref storage.
+pub fn orient_partial_bake_video_filter(
+    outlier: &CompatibleStreamKey,
+    reference: &CompatibleStreamKey,
+) -> Result<String, String> {
+    let ref_rot = reference
+        .rotation
+        .known_degrees()
+        .ok_or_else(|| "orient partial-bake: reference rotation unknown".to_string())?;
+    let _out_rot = outlier
+        .rotation
+        .known_degrees()
+        .ok_or_else(|| "orient partial-bake: rotation unknown".to_string())?;
+    let ref_w = reference.width;
+    let ref_h = reference.height;
+    let mut steps: Vec<String> = vec![
+        format!("scale={ref_w}:{ref_h}:force_original_aspect_ratio=decrease:force_divisible_by=2"),
+        format!("pad={ref_w}:{ref_h}:(ow-iw)/2:(oh-ih)/2"),
+    ];
+    // Reference clips often store upside-down pixels + 180° display matrix (GoPro mount).
+    if ref_rot == 180 {
+        steps.push("hflip,vflip".into());
+    }
+    let fmt = reference.pix_fmt.trim();
+    let encode_fmt = if fmt.contains("yuvj") {
+        "yuv420p"
+    } else if !fmt.is_empty() {
+        fmt
+    } else {
+        "yuv420p"
+    };
+    steps.push(format!("format={encode_fmt}"));
+    Ok(steps.join(","))
+}
+
+/// OPT-27 Slice C: transcode one outlier clip to Clip 1 coded geometry + reference rotation metadata.
+///
+/// Decode uses FFmpeg autorotate; [`orient_partial_bake_video_filter`] matches reference storage.
+pub fn build_orient_partial_bake_args(
+    input: &str,
+    output: &str,
+    outlier: &CompatibleStreamKey,
+    reference: &CompatibleStreamKey,
+    vcodec: VideoCodec,
+    hevc_tag: &str,
+    params: &EncodingParams,
+    has_audio: bool,
+) -> Result<Vec<String>, String> {
+    let vf = orient_partial_bake_video_filter(outlier, reference)?;
+    let mut args: Vec<String> = vec!["-y".into(), "-hide_banner".into()];
+    args.extend(params.input_params.iter().cloned());
+    args.extend([
+        "-i".into(),
+        input.to_string(),
+        "-map".into(),
+        "0:v:0".into(),
+    ]);
+    map_audio_if(has_audio, &mut args);
+    args.extend(["-vf".into(), vf]);
+    args.extend(params.output_params.iter().cloned());
+    match vcodec {
+        VideoCodec::H264 => {
+            args.extend(["-pix_fmt".into(), "yuv420p".into()]);
+        }
+        VideoCodec::Hevc => {
+            let pix = reference.pix_fmt.trim();
+            let pix = if pix.contains("yuvj") {
+                "yuv420p"
+            } else if pix.is_empty() {
+                "yuv420p"
+            } else {
+                pix
+            };
+            args.extend([
+                "-pix_fmt".into(),
+                pix.to_string(),
+                "-tag:v".into(),
+                hevc_tag.to_string(),
+            ]);
+        }
+        VideoCodec::Other => {}
+    }
+    if has_audio {
+        args.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()]);
+    } else {
+        args.push("-an".into());
+    }
+    args.extend([
+        "-metadata:s:v:0".into(),
+        "rotate=0".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output.to_string(),
+    ]);
+    Ok(args)
 }
 
 /// Compatible-path per-clip prep → MPEG-TS in one pass (rotation/editlist + Annex-B).
@@ -1184,7 +1341,7 @@ pub fn build_rotation_concat_filter(
 /// Per-input decode args for the rotation graph. `decode_accel` must come from
 /// [`super::hw_accel::HwAccelInfo::hwaccel_for_cpu_filters`]: no `-hwaccel_output_format`, so frames
 /// reach `transpose` / `scale` in system memory.
-fn rotation_decode_input_params(decode_accel: Option<&str>) -> Vec<String> {
+pub fn rotation_decode_input_params(decode_accel: Option<&str>) -> Vec<String> {
     match decode_accel {
         Some(accel) => vec!["-hwaccel".into(), accel.to_string()],
         None => Vec::new(),
@@ -1384,6 +1541,147 @@ pub fn probe_clip_for_concat(ffmpeg: &Path, path: &str) -> Result<ClipConcatProb
             ),
         })?;
     Ok(ClipConcatProbe::from_cached(&cached))
+}
+
+/// Fresh probe for OPT-27 harmonize temps (no probe-cache read/write, P9).
+fn probe_clip_for_concat_fresh(ffmpeg: &Path, path: &str) -> Result<ClipConcatProbe, ConcatError> {
+    let stderr = ffmpeg_probe_stderr(ffmpeg, path).map_err(ConcatError::Ffmpeg)?;
+    if parse_vcodec_from_probe(&stderr).is_none() {
+        return Err(ConcatError::Message(format!("no video stream in: {path}")));
+    }
+    let cached = probe_cache::cached_probe_from_stderr(&stderr).ok_or_else(|| {
+        ConcatError::NeedsReencode {
+            reason: format!(
+                "Compatible Path: Video-Stream nicht lesbar ({})",
+                Path::new(path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(path)
+            ),
+        }
+    })?;
+    Ok(ClipConcatProbe::from_cached(&cached))
+}
+
+/// OPT-27 Slice D: auto body concat may harmonize orientations before the Compatible gate.
+#[derive(Debug, Clone)]
+pub struct ConcatAutoOrientConfig {
+    pub enabled: bool,
+    pub hw_accel_enabled: bool,
+    pub crf: u8,
+    pub body_concat_mode: String,
+}
+
+pub fn auto_orient_harmonize_active(mode: &str, enabled: bool) -> bool {
+    is_auto_body_concat_mode(mode) && enabled
+}
+
+fn orient_plan_log_label(plan: &OrientPlan) -> &'static str {
+    match plan {
+        OrientPlan::Aligned => "aligned",
+        OrientPlan::CopyHarmonizeCandidate => "copy_harmonize",
+        OrientPlan::PartialBake { .. } => "partial_bake",
+        OrientPlan::Unrecoverable { .. } => "unrecoverable",
+    }
+}
+
+fn orient_harmonize_error_to_concat(err: OrientHarmonizeError) -> ConcatError {
+    match err {
+        OrientHarmonizeError::Ffmpeg(e) => ConcatError::Ffmpeg(e),
+        OrientHarmonizeError::Parallel(e) => ConcatError::Parallel(e),
+        OrientHarmonizeError::Io(e) => ConcatError::Io(e),
+        OrientHarmonizeError::Message(m) => ConcatError::Message(m),
+        OrientHarmonizeError::LengthMismatch | OrientHarmonizeError::WrongPlan => {
+            ConcatError::NeedsReencode {
+                reason: "auto: Orientierung harmonisieren fehlgeschlagen".into(),
+            }
+        }
+    }
+}
+
+/// Plan → copy/partial harmonize → re-probe (auto mode only).
+fn auto_orient_prepare_paths_and_probes(
+    ffmpeg: &Path,
+    paths: &[String],
+    clip_probes: &[ClipConcatProbe],
+    cfg: &ConcatAutoOrientConfig,
+    on_reencode: Option<&ReencodeAskFn>,
+    on_progress: &ProgressCallback,
+) -> Result<(Vec<String>, Vec<ClipConcatProbe>, Option<PathBuf>), ConcatError> {
+    if !auto_orient_harmonize_active(&cfg.body_concat_mode, cfg.enabled) {
+        return Ok((paths.to_vec(), clip_probes.to_vec(), None));
+    }
+
+    let keys: Vec<CompatibleStreamKey> = clip_probes
+        .iter()
+        .map(|p| p.compatible_key.clone())
+        .collect();
+    let plan = plan_orientation_harmonization(&keys);
+    logging::info(
+        "concat",
+        format!("auto: orient plan={}", orient_plan_log_label(&plan)),
+    );
+
+    let OrientPlan::Unrecoverable { reason } = plan else {
+        if matches!(plan, OrientPlan::Aligned) {
+            return Ok((paths.to_vec(), clip_probes.to_vec(), None));
+        }
+        let work_dir = make_work_dir("orient")?;
+        let harmonized = match plan {
+            OrientPlan::PartialBake { indices } => {
+                logging::info(
+                    "concat",
+                    format!("auto: orient partial-bake n={}", indices.len()),
+                );
+                let opts = OrientPartialBakeOptions {
+                    body_concat_mode: cfg.body_concat_mode.clone(),
+                    crf: cfg.crf,
+                    hw_accel_enabled: cfg.hw_accel_enabled,
+                };
+                let durations: Vec<f64> = clip_probes.iter().map(|p| p.duration_secs).collect();
+                harmonize_clip_orientations_partial_bake(
+                    ffmpeg,
+                    &work_dir,
+                    paths,
+                    &keys,
+                    &opts,
+                    on_reencode,
+                    Some(&durations),
+                    Some(Arc::clone(on_progress)),
+                )
+                .map_err(orient_harmonize_error_to_concat)?
+            }
+            OrientPlan::CopyHarmonizeCandidate => {
+                let n = super::orient_harmonize::orient_copy_harmonize_outlier_indices(&keys).len();
+                logging::info("concat", format!("auto: orient copy-harmonize n={n}"));
+                harmonize_clip_orientations_copy(ffmpeg, &work_dir, paths, &keys)
+                    .map_err(orient_harmonize_error_to_concat)?
+            }
+            OrientPlan::Aligned | OrientPlan::Unrecoverable { .. } => unreachable!(),
+        };
+
+        let harmonized_paths: Vec<String> = harmonized
+            .iter()
+            .map(|p| path_str(p))
+            .collect();
+        let mut fresh_probes = Vec::with_capacity(harmonized_paths.len());
+        for p in &harmonized_paths {
+            fresh_probes.push(probe_clip_for_concat_fresh(ffmpeg, p)?);
+        }
+        return Ok((harmonized_paths, fresh_probes, Some(work_dir)));
+    };
+
+    Err(ConcatError::NeedsReencode { reason })
+}
+
+struct OrientWorkCleanup(Option<PathBuf>);
+
+impl Drop for OrientWorkCleanup {
+    fn drop(&mut self) {
+        if let Some(dir) = self.0.take() {
+            let _ = fs::remove_dir_all(dir);
+        }
+    }
 }
 
 /// Returns `(codec, sample_rate_hz)` when an audio stream is present.
@@ -1721,7 +2019,16 @@ pub fn concat_videos_stream_copy_only(
     output: &str,
     on_progress: ProgressCallback,
 ) -> Result<ConcatOutcome, ConcatError> {
-    concat_videos_stream_copy_only_with_mode(ffmpeg, paths, output, on_progress, "legacy", None)
+    concat_videos_stream_copy_only_with_mode(
+        ffmpeg,
+        paths,
+        output,
+        on_progress,
+        "legacy",
+        None,
+        None,
+        None,
+    )
 }
 
 /// Like [`concat_videos_stream_copy_only`], with explicit body-concat mode + optional ask.
@@ -1732,6 +2039,8 @@ pub fn concat_videos_stream_copy_only_with_mode(
     on_progress: ProgressCallback,
     body_concat_mode: &str,
     on_fast_fail: Option<&BodyConcatAskFn>,
+    auto_orient: Option<&ConcatAutoOrientConfig>,
+    on_reencode: Option<&ReencodeAskFn>,
 ) -> Result<ConcatOutcome, ConcatError> {
     if paths.len() < 2 {
         return Err(ConcatError::Message(
@@ -1854,6 +2163,7 @@ pub fn concat_videos_stream_copy_only_with_mode(
             if use_auto {
                 logging::info("concat", format!("auto: resolved HEVC tag={hevc_tag}"));
             }
+            let orient_for_concat = if use_auto { auto_orient } else { None };
             match concat_stream_copy_compatible(
                 ffmpeg,
                 paths,
@@ -1865,6 +2175,8 @@ pub fn concat_videos_stream_copy_only_with_mode(
                 compatible_probes.as_ref().expect("compatible probes"),
                 emit_compatible_probe_progress,
                 hevc_tag,
+                orient_for_concat,
+                on_reencode,
             ) {
                 Ok(()) => {
                     emit(&on_progress, 100.0, "end");
@@ -2397,10 +2709,21 @@ fn concat_stream_copy_compatible(
     clip_probes: &[ClipConcatProbe],
     emit_probe_progress: bool,
     hevc_tag: &str,
+    auto_orient: Option<&ConcatAutoOrientConfig>,
+    on_reencode: Option<&ReencodeAskFn>,
 ) -> Result<(), ConcatError> {
     if is_cancelled() {
         return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
     }
+
+    let (paths, clip_probes, orient_work) = if let Some(cfg) = auto_orient {
+        auto_orient_prepare_paths_and_probes(ffmpeg, paths, clip_probes, cfg, on_reencode, on_progress)?
+    } else {
+        (paths.to_vec(), clip_probes.to_vec(), None)
+    };
+    let paths = paths.as_slice();
+    let clip_probes = clip_probes.as_slice();
+    let _orient_work_guard = OrientWorkCleanup(orient_work);
 
     // OPT-16: skip "compatible-probe" UI step when all clips were cache hits.
     if emit_probe_progress {
@@ -2410,14 +2733,25 @@ fn concat_stream_copy_compatible(
         .iter()
         .map(|p| p.compatible_key.clone())
         .collect();
-    compatible_probe_gate_keys(&keys, has_audio)?;
+    if let Err(e @ ConcatError::NeedsReencode { .. }) = compatible_probe_gate_keys(&keys, has_audio)
+    {
+        if auto_orient.is_some() {
+            if let ConcatError::NeedsReencode { reason } = &e {
+                logging::warn(
+                    "concat",
+                    format!("auto: orient post-gate fail: {reason}"),
+                );
+            }
+        }
+        return Err(e);
+    }
+
+    if auto_orient.is_some() {
+        logging::info("concat", "auto: orient post-gate ok");
+    }
 
     let clean = compatible_clips_are_clean(&keys);
     let mixed_encoders = keys.iter().any(|k| k.encoder != keys[0].encoder);
-    if let Some(reason) = mixed_encoders_reencode_reason(vcodec, hevc_tag, mixed_encoders) {
-        logging::info("concat", "compatible: mixed encoders + hvc1 → reencode");
-        return Err(ConcatError::NeedsReencode { reason });
-    }
     if clean {
         logging::info("concat", "compatible: clean-pass");
         match concat_compatible_clean_pass(
@@ -2485,11 +2819,23 @@ fn concat_stream_copy_compatible(
         clip_probes,
         ts_prep_merge_hevc_tag(mixed_encoders, hevc_tag),
     )?;
+    // OPT-27 P6 / OPT-26A: mixed HEVC encoders merge as `hev1` (in-band VPS/SPS/PPS).
+    // Stream-copy retag to `hvc1` would apply clip-1 `hvcC` to all segments → seam freeze.
+    if mixed_encoders_reencode_reason(vcodec, hevc_tag, mixed_encoders).is_some() {
+        logging::info(
+            "concat",
+            "compatible: mixed encoders — keeping hev1 (hvc1 retag unsafe after ts-prep)",
+        );
+        return Ok(());
+    }
     maybe_ensure_output_hevc_hvc1_tag(ffmpeg, output, vcodec, hevc_tag, has_audio, on_progress)
 }
 
-/// Mixed HEVC encoders cannot be stream-copied into `hvc1`: only the `hvcC` parameter
-/// sets of clip 1 apply, so clips after the seam decode as a frozen frame.
+/// Whether a **clean-pass** direct concat into `hvc1` would be unsafe with mixed encoders.
+///
+/// TS-Prep merges mixed HEVC as `hev1` instead ([`ts_prep_merge_hevc_tag`]); do not retag to
+/// `hvc1` afterwards ([`concat_stream_copy_compatible`]). Full reencode is not required for
+/// OPT-27 partial-bake outliers (GoPro + one NVENC clip).
 pub fn mixed_encoders_reencode_reason(
     vcodec: VideoCodec,
     hevc_tag: &str,
@@ -2857,6 +3203,7 @@ pub fn concat_videos(
         18,
         "legacy",
         None,
+        true,
         None,
     )
 }
@@ -2871,8 +3218,15 @@ pub fn concat_videos_with_opts(
     crf: u8,
     body_concat_mode: &str,
     on_fast_fail: Option<&BodyConcatAskFn>,
+    orient_harmonize_enabled: bool,
     on_reencode: Option<&ReencodeAskFn>,
 ) -> Result<ConcatOutcome, ConcatError> {
+    let auto_orient = ConcatAutoOrientConfig {
+        enabled: orient_harmonize_enabled,
+        hw_accel_enabled,
+        crf,
+        body_concat_mode: body_concat_mode.to_string(),
+    };
     match concat_videos_stream_copy_only_with_mode(
         ffmpeg,
         paths,
@@ -2880,6 +3234,8 @@ pub fn concat_videos_with_opts(
         Arc::clone(&on_progress),
         body_concat_mode,
         on_fast_fail,
+        Some(&auto_orient),
+        on_reencode,
     ) {
         Ok(outcome) => Ok(outcome),
         Err(ConcatError::NeedsReencode { reason }) => {
@@ -3371,6 +3727,7 @@ pub fn trim_video(
 mod tests {
     use super::*;
     use crate::video::hw_accel::{EncodingParams, HwAccelInfo};
+    use crate::video::probe::{CompatibleStreamKey, VideoRotationProbe};
 
     #[test]
     fn normalize_vcodec_hevc_aliases() {
@@ -3503,6 +3860,78 @@ pts_time:4.000000 type:I
             rot_pos < i_pos,
             "display_rotation must be an input option (before -i)"
         );
+
+        let orient = build_orient_copy_harmonize_args("in.mp4", "harm.mp4", true, 0);
+        assert!(orient.contains(&"-noautorotate".into()));
+        assert!(orient.contains(&"-display_rotation".into()));
+        assert!(orient.contains(&"0".into()));
+        assert!(orient.contains(&"-c".into()));
+        assert!(orient.contains(&"copy".into()));
+        assert!(orient.contains(&"rotate=0".into()));
+        assert!(
+            !orient.iter().any(|a| a.contains("metadata=aud")),
+            "copy-harmonize must not insert AUD"
+        );
+        let orient_i = orient.iter().position(|a| a == "-i").expect("-i");
+        let orient_rot = orient
+            .iter()
+            .position(|a| a == "-display_rotation")
+            .expect("-display_rotation");
+        assert!(
+            orient_rot < orient_i,
+            "display_rotation must be an input option (before -i)"
+        );
+
+        let ref_key = CompatibleStreamKey {
+            codec: "h264".into(),
+            width: 1920,
+            height: 1080,
+            pix_fmt: "yuv420p".into(),
+            tag: "avc1".into(),
+            profile: "High".into(),
+            has_audio: true,
+            rotation: VideoRotationProbe::Known(0),
+            needs_editlist_hygiene: false,
+            encoder: "gopro".into(),
+        };
+        let outlier_key = CompatibleStreamKey {
+            width: 1080,
+            height: 1920,
+            rotation: VideoRotationProbe::Known(90),
+            ..ref_key.clone()
+        };
+        let vf = orient_partial_bake_video_filter(&outlier_key, &ref_key).unwrap();
+        assert!(vf.contains("scale=1920:1080"));
+        assert!(vf.contains("pad=1920:1080"));
+        assert!(vf.contains("format=yuv420p"));
+
+        let ref_180 = CompatibleStreamKey {
+            rotation: VideoRotationProbe::Known(180),
+            ..ref_key.clone()
+        };
+        let vf_180 = orient_partial_bake_video_filter(&outlier_key, &ref_180).unwrap();
+        assert!(vf_180.contains("hflip,vflip"));
+
+        let params = EncodingParams {
+            input_params: vec!["-hwaccel".into(), "videotoolbox".into()],
+            output_params: vec!["-c:v".into(), "libx264".into(), "-crf".into(), "18".into()],
+            encoder: "libx264".into(),
+        };
+        let bake = build_orient_partial_bake_args(
+            "in.mp4",
+            "bake.mp4",
+            &outlier_key,
+            &ref_key,
+            VideoCodec::H264,
+            "hev1",
+            &params,
+            true,
+        )
+        .unwrap();
+        assert!(!bake.contains(&"-noautorotate".into()));
+        assert!(bake.contains(&"-vf".into()));
+        assert!(bake.contains(&"yuv420p".into()));
+        assert!(bake.contains(&"rotate=0".into()));
 
         let hevc = build_prep_compatible_args(
             "in.mp4",
@@ -4063,7 +4492,17 @@ Input #0, mov, from 'a.mp4':
     }
 
     #[test]
-    fn mixed_encoders_hvc1_needs_reencode() {
+    fn auto_orient_harmonize_active_only_for_auto_mode() {
+        assert!(auto_orient_harmonize_active("auto", true));
+        assert!(auto_orient_harmonize_active("preserve", true));
+        assert!(!auto_orient_harmonize_active("auto", false));
+        assert!(!auto_orient_harmonize_active("compatible", true));
+        assert!(!auto_orient_harmonize_active("apple", true));
+        assert!(!auto_orient_harmonize_active("fast", true));
+    }
+
+    #[test]
+    fn mixed_encoders_hvc1_clean_pass_unsafe() {
         assert!(mixed_encoders_reencode_reason(VideoCodec::Hevc, "hvc1", true).is_some());
         assert!(mixed_encoders_reencode_reason(VideoCodec::Hevc, "hev1", true).is_none());
         assert!(mixed_encoders_reencode_reason(VideoCodec::Hevc, "hvc1", false).is_none());

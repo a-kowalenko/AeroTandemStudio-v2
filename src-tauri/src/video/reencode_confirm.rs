@@ -57,6 +57,8 @@ pub enum ReencodeKind {
     /// Explicit H.264/H.265 preference ≠ produced body codec (no remux attempt).
     ForcedCodec,
     Rotate,
+    /// OPT-27: single-clip orientation partial bake before compatible stream-copy merge.
+    OrientPartial,
 }
 
 impl ReencodeKind {
@@ -72,6 +74,7 @@ impl ReencodeKind {
             Self::RemuxFallback => "remux_fallback",
             Self::ForcedCodec => "forced_codec",
             Self::Rotate => "rotate",
+            Self::OrientPartial => "orient_partial",
         }
     }
 }
