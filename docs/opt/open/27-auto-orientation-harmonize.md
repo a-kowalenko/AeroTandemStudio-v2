@@ -312,7 +312,8 @@ Nur Slice C. Voraussetzung: Slice 0 Ergebnis = PartialBake. Danach cargo test.
 ## DoD gesamt (OPT-27 ✅)
 
 - [x] Slice 0 Ergebnis dokumentiert
-- [ ] Auto: typischer GoPro-Mixfall stream-copy oder Partial Bake (kein Full-Reencode)
+- [x] Auto: typischer GoPro-Mixfall stream-copy oder Partial Bake (kein Full-Reencode)
+- [x] Post-merge Auslieferung: Display-Matrix per Copy-Remux (kein Body-Reencode) wenn Prep `rotate=0` strippt
 - [ ] QT + iPhone Naht-Check bestanden
 - [ ] Keine Regression `fast` / Phase 40 Akzeptanz
 - [ ] `cargo test` grün

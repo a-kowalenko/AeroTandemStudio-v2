@@ -100,6 +100,9 @@ pub struct CreateVideoOptions {
     /// `video_paths`. Missing / short ⇒ 0. Source files stay unrotated.
     #[serde(default)]
     pub clip_rotations: Vec<i32>,
+    /// After concat: stream-copy remux with Clip 1 display rotation when merge stripped metadata.
+    #[serde(default = "default_true")]
+    pub auto_upright_delivery: bool,
 }
 
 impl CreateVideoOptions {
@@ -174,6 +177,7 @@ impl Default for CreateVideoOptions {
             hw_accel_enabled: false,
             defer_forced_reencode: false,
             clip_rotations: Vec::new(),
+            auto_upright_delivery: true,
         }
     }
 }
@@ -2452,6 +2456,15 @@ pub fn create_video(
     let rotations: Vec<u32> = (0..video_paths.len())
         .map(|i| options.clip_rotation(i))
         .collect();
+    let orient_harmonize_enabled = rotations.iter().all(|&d| d == 0);
+    let upright_orient_ref_deg: Option<u32> =
+        if orient_harmonize_enabled && options.auto_upright_delivery {
+            concat::clip1_soft_rotation_clockwise_deg(ffmpeg, video_paths)
+                .ok()
+                .flatten()
+        } else {
+            None
+        };
     let rotation_route = if rotations.iter().all(|&d| d == 0) {
         concat::BodyRotationRoute::None
     } else {
@@ -2598,7 +2611,6 @@ pub fn create_video(
 
         let cb = body_concat_overall_progress(Arc::clone(&on_progress));
         emit_step_start(&on_progress, "Füge Clips zusammen…");
-        let orient_harmonize = rotations.iter().all(|&d| d == 0);
         concat::concat_videos_with_opts(
             ffmpeg,
             &clip_outs,
@@ -2608,7 +2620,7 @@ pub fn create_video(
             encode_crf,
             &options.body_concat_mode,
             on_body_concat_fallback.as_ref(),
-            orient_harmonize,
+            orient_harmonize_enabled,
             on_reencode.as_ref(),
         )?;
         encoder_used = v_params.vcodec.clone();
@@ -2619,7 +2631,6 @@ pub fn create_video(
             emit_step_start(&on_progress, "Füge Clips zusammen…");
         }
         let cb = body_concat_overall_progress(Arc::clone(&on_progress));
-        let orient_harmonize = rotations.iter().all(|&d| d == 0);
         concat::concat_videos_with_opts(
             ffmpeg,
             video_paths,
@@ -2629,10 +2640,28 @@ pub fn create_video(
             options.crf,
             &options.body_concat_mode,
             on_body_concat_fallback.as_ref(),
-            orient_harmonize,
+            orient_harmonize_enabled,
             on_reencode.as_ref(),
         )?;
         body_target
+    };
+    let body_path = if options.auto_upright_delivery
+        && folded_clips.is_none()
+        && matches!(rotation_route, concat::BodyRotationRoute::None)
+    {
+        let cb = body_concat_overall_progress(Arc::clone(&on_progress));
+        super::body_upright::maybe_bake_body_upright_for_delivery(
+            ffmpeg,
+            &body_path,
+            &work,
+            hw_accel_enabled,
+            options.crf,
+            cb,
+            upright_orient_ref_deg,
+        )
+        .map_err(ProcessorError::Ffmpeg)?
+    } else {
+        body_path
     };
     let body_path = if let concat::BodyRotationRoute::Display(deg) = rotation_route {
         // `display_ok` implies no intro/outro/forced codec → body goes straight to `output`.

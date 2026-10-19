@@ -3281,6 +3281,18 @@ pub fn clips_have_soft_rotation(ffmpeg: &Path, paths: &[String]) -> Result<bool,
         .any(|p| p.compatible_key.rotation.known_degrees() != Some(0)))
 }
 
+/// Clip 1 clockwise soft-rotation from probe (`{0,90,180,270}`), if known.
+pub fn clip1_soft_rotation_clockwise_deg(
+    ffmpeg: &Path,
+    paths: &[String],
+) -> Result<Option<u32>, ConcatError> {
+    let Some(first) = paths.first() else {
+        return Ok(None);
+    };
+    let probe = probe_clip_for_concat(ffmpeg, first)?;
+    Ok(probe.compatible_key.rotation.known_degrees())
+}
+
 /// Stream-copy `input` → `output` with a clockwise display rotation (OPT-26).
 /// `input == output` is allowed (temp sibling + rename).
 pub fn remux_with_display_rotation(

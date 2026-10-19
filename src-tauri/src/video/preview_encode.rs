@@ -821,6 +821,7 @@ pub fn generate_preview(
             hw_accel_enabled: config.hardware_acceleration_enabled,
             defer_forced_reencode: false,
             clip_rotations: Vec::new(),
+            auto_upright_delivery: false,
         };
         let result = processor::create_video(
             ffmpeg,
