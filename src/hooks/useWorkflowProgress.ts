@@ -40,6 +40,7 @@ import {
   type QrLookupUi,
   type QrScanJobStage,
   type QrScanPhase,
+  type ShortClipHygieneProgress,
 } from "../store/qrScanStore";
 
 const COLLAPSE_AFTER_MS = 3500;
@@ -117,6 +118,7 @@ type Input = {
   qrLookup: QrLookupUi | null;
   /** Photo neighbor follow-up has taken over the stripe list. */
   qrNeighborFollowup: boolean;
+  qrShortClipHygiene: ShortClipHygieneProgress | null;
   videoImporting: boolean;
   photoImporting: boolean;
   encodeBusy: boolean;
@@ -193,6 +195,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
         qrVideoEdgeLimited: input.qrVideoEdgeLimited,
         qrLookup: input.qrLookup,
         qrNeighborFollowup: input.qrNeighborFollowup,
+        qrShortClipHygiene: input.qrShortClipHygiene,
       }),
     [
       input.sdWorkflowActive,
@@ -210,6 +213,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       input.qrVideoEdgeLimited,
       input.qrLookup,
       input.qrNeighborFollowup,
+      input.qrShortClipHygiene,
     ],
   );
 
@@ -253,6 +257,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       input.qrVideoEdgeLimited,
       input.qrLookup,
       input.qrNeighborFollowup,
+      input.qrShortClipHygiene,
     );
   }, [
     input.qrScanBusy,
@@ -266,6 +271,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     input.qrVideoEdgeLimited,
     input.qrLookup,
     input.qrNeighborFollowup,
+    input.qrShortClipHygiene,
   ]);
 
   const showSdProgress = Boolean(input.sdWorkflowActive && sdProgress);

@@ -61,6 +61,26 @@
       "photos": "Fotos",
       "themeLight": "Hell",
       "themeDark": "Dunkel",
+      "language": "Sprache",
+      "storageLocation": "Speicherort",
+      "dropzonePlaceholder": "Dropzone…",
+      "actions": "Aktionen",
+      "all": "Alle",
+      "date": "Datum",
+      "drive": "Laufwerk {{name}}",
+      "filesCount": "{{count}} Dateien",
+      "filesCountWithSize": "{{count}} Dateien · {{sizeMb}} MB",
+      "name": "Name",
+      "no": "nein",
+      "none": "Keine",
+      "preview": "Vorschau",
+      "sdCard": "SD-Karte",
+      "selectedSummary": "gewählt: {{count}} ({{sizeMb}} MB)",
+      "size": "Größe",
+      "sortAsc": "↑ Auf",
+      "sortDesc": "↓ Ab",
+      "type": "Typ",
+      "yes": "ja",
       "themeTeamSpirit": "Dark Spirit",
       "themeDeutschland": "Deutschland",
       "themeDeutschlandDark": "Deutschland Nacht",
@@ -86,27 +106,7 @@
       "themePrussianDay": "Prussian Day",
       "themePrussianNight": "Prussian Night",
       "themeFsz": "FSZ Dunkel",
-      "themeFszLight": "FSZ Hell",
-      "language": "Sprache",
-      "storageLocation": "Speicherort",
-      "dropzonePlaceholder": "Dropzone…",
-      "actions": "Aktionen",
-      "all": "Alle",
-      "date": "Datum",
-      "drive": "Laufwerk {{name}}",
-      "filesCount": "{{count}} Dateien",
-      "filesCountWithSize": "{{count}} Dateien · {{sizeMb}} MB",
-      "name": "Name",
-      "no": "nein",
-      "none": "Keine",
-      "preview": "Vorschau",
-      "sdCard": "SD-Karte",
-      "selectedSummary": "gewählt: {{count}} ({{sizeMb}} MB)",
-      "size": "Größe",
-      "sortAsc": "↑ Auf",
-      "sortDesc": "↓ Ab",
-      "type": "Typ",
-      "yes": "ja"
+      "themeFszLight": "FSZ Hell"
     },
     "language": {
       "de": "Deutsch",
@@ -135,11 +135,11 @@
     },
     "areas": {
       "workplace": "Persönlich",
-      "appearance": "Darstellung",
       "media": "Medien",
       "connection": "Verbindung",
       "output": "Ausgabe",
-      "maintenance": "Wartung"
+      "maintenance": "Wartung",
+      "appearance": "Darstellung"
     },
     "complexity": {
       "simple": "Einfach",
@@ -152,7 +152,7 @@
     "general": {
       "appearance": {
         "title": "Darstellung",
-        "description": "Design der Oberfläche (Hell, Dunkel oder Spezial).",
+        "description": "Hell- oder Dunkelmodus der Oberfläche.",
         "quickAccessHint": "Themes können Sie auch über das Paletten-Symbol bei Einstellungen in der Kopfzeile wechseln — die App bleibt dabei sichtbar.",
         "groups": {
           "base": "Basis",
@@ -430,7 +430,11 @@
         "removePhotoHint": "Nachbarfotos derselben Serie (≤10s Abstand) werden in beide Richtungen geprüft; nach 3 Fotos ohne QR je Richtung Stopp.",
         "removeVideo": "QR-Videoclip nach erfolgreicher Analyse entfernen",
         "maxDuration": "Max. Clip-Länge für Löschung (Sek.)",
-        "maxDurationHint": "Nur Clips mit dieser Länge oder kürzer werden entfernt (Standard: 10s)."
+        "maxDurationHint": "Nur Clips mit dieser Länge oder kürzer werden entfernt (Standard: 10s).",
+        "cleanupShortVideos": "Kurze Videos nach Import aus Session entfernen",
+        "cleanupShortVideosHint": "Nach Import und optionalem QR-Scan: neue Clips ≤ Schwelle aus Arbeitsordner und Liste — SD-Backup bleibt unverändert. QR-Treffer und unbekannte Dauer bleiben.",
+        "cleanupShortMaxSec": "Max. Länge Kurzclip (Sek.)",
+        "cleanupShortMaxSecHint": "Nur neu importierte Clips mit dieser Länge oder kürzer (Standard: 5 s)."
       }
     },
     "sd": {
@@ -537,11 +541,6 @@
         "backupUrlHint": "Zweites SMB-Ziel für dieses Profil — kein Failover, nur zusätzliche Freigabe.",
         "backupUrlPlaceholder": "smb://…/backup"
       },
-      "diagnostics": {
-        "title": "Diagnostik",
-        "switch": "Fehlerberichte senden",
-        "description": "Nur Fehlermeldungen und technische Daten (z. B. PC-Name des Rechners). Keine Medien oder Kundendaten."
-      },
       "upload": {
         "title": "Upload",
         "afterCreate": "Nach Erstellung auf Server hochladen",
@@ -590,6 +589,11 @@
         "suggestBackupLine": " · Backup: {{url}}",
         "suggestBody": "Primär: {{primary}}{{backup}}",
         "suggestTitle": "SMB-Pfade von der Buchungssuche"
+      },
+      "diagnostics": {
+        "title": "Diagnostik",
+        "switch": "Fehlerberichte senden",
+        "description": "Nur Fehlermeldungen und technische Daten (z. B. PC-Name des Rechners). Keine Medien oder Kundendaten."
       }
     },
     "save": {
@@ -1213,7 +1217,9 @@
     "import": {
       "label": "Import",
       "summary": "{{videos}} Videos, {{photos}} Fotos",
-      "skipped": " · {{count}} übersprungen"
+      "skipped": " · {{count}} übersprungen",
+      "shortClipRemoved": "{{count}} kurzes Video entfernt (≤ {{maxSec}} s)",
+      "shortClipRemovedMany": "{{count}} kurze Videos entfernt (≤ {{maxSec}} s)"
     },
     "qr": {
       "label": "QR-Code",
@@ -1263,6 +1269,7 @@
       "bgFailMessage": "{{detail}} Nachholen unter Vorgänge.",
       "bgFailHint": "Bitte unter Vorgänge nachholen.",
       "bgCancelled": "Upload abgebrochen — unter Vorgänge nachholbar.",
+      "titleLater": "Upload · später",
       "remoteMarkedDone": "Als erledigt markiert — der Ordner liegt schon auf dem Server.",
       "remoteReplaced": "Server-Ordner ersetzt und hochgeladen.",
       "remoteHandoffFailed": "Als erledigt markiert. Die Cloud-Übergabe konnte nicht angestoßen werden — Status später unter Vorgänge prüfen."
@@ -1281,8 +1288,8 @@
     },
     "media": {
       "kindAria": "Medienart",
-      "clearVideos": "Alle Videos leeren",
-      "clearPhotos": "Alle Fotos leeren",
+      "clearVideos": "Videos leeren",
+      "clearPhotos": "Fotos leeren",
       "clearingVideos": "Leeren…",
       "clearingPhotos": "Leeren…",
       "clearedVideos": "Videos geleert",
@@ -1646,20 +1653,6 @@
     "appendTitleWait": "Erst wenn der Upload abgeschlossen ist",
     "appendTitleBusy": "Eine Nachreichung läuft bereits",
     "appendTitleOk": "Weitere Medien in denselben Kundenordner legen",
-    "sdBackups": {
-      "title": "SD-Backups",
-      "loading": "SD-Backups…",
-      "openFolder": "Ordner öffnen",
-      "server": "Server-Backup",
-      "copyRemotePath": "Server-Pfad kopieren",
-      "pathCopied": "Pfad in die Zwischenablage kopiert.",
-      "remotePathHint": "Kein direkter Zugriff aus der App — Pfad kopieren und zum konfigurierten Server-Backup navigieren.",
-      "renamedLocal": "Umbenannt (lokal)",
-      "renamedRemote": "Umbenannt (Server)",
-      "originalName": "Ursprünglich: {{name}}",
-      "remoteRenameFailed": "Server-Umbenennung fehlgeschlagen: {{error}}",
-      "folderMissingHint": "SD-Backup-Ordner wurde entfernt oder verschoben."
-    },
     "files": "Dateien",
     "appended": "Nachgereicht",
     "appendedFolder": "Nachreichung {{folder}}",
@@ -1811,6 +1804,20 @@
     },
     "appendTitleCloudOffline": "Keine Serververbindung — Nachreichen in die Cloud, sobald die Verbindung steht",
     "appendTitleUploadOff": "Cloud-Upload ist deaktiviert — in den Einstellungen aktivieren, um nachzureichen",
+    "sdBackups": {
+      "title": "SD-Backups",
+      "loading": "SD-Backups…",
+      "openFolder": "Ordner öffnen",
+      "server": "Server-Backup",
+      "copyRemotePath": "Server-Pfad kopieren",
+      "pathCopied": "Pfad in die Zwischenablage kopiert.",
+      "remotePathHint": "Kein direkter Zugriff aus der App — Pfad kopieren und zum konfigurierten Server-Backup navigieren.",
+      "renamedLocal": "Umbenannt (lokal)",
+      "renamedRemote": "Umbenannt (Server)",
+      "originalName": "Ursprünglich: {{name}}",
+      "remoteRenameFailed": "Server-Umbenennung fehlgeschlagen: {{error}}",
+      "folderMissingHint": "SD-Backup-Ordner wurde entfernt oder verschoben."
+    },
     "jobs": {
       "pageSize": "{{count}} / Seite",
       "pageSizeAria": "Einträge pro Seite",
@@ -2019,6 +2026,7 @@
       "readingVideo": "Video wird für die QR-Suche gelesen…",
       "removingQrPhotos": "QR-Fotos werden aus der Liste entfernt…",
       "removingQrVideo": "QR-Clip wird aus der Liste entfernt…",
+      "removingShortClips": "Kurze Clips werden entfernt…",
       "scanGeneric": "QR-Code suchen…",
       "scanPhotos": "QR-Code in Fotos suchen…",
       "scanVideos": "QR-Code in Videos suchen…",
@@ -2086,7 +2094,7 @@
       "success": {
         "trim": "Schnitt übernommen. Rückgängig über den Clip oder Alle Bearbeitungen rückgängig.",
         "split": "Video geteilt. Rückgängig über einen Teil-Clip oder Alle Bearbeitungen rückgängig.",
-        "rotate": "Drehung gespeichert — wird beim Erstellen angewendet. Rückgängig über den Clip oder Alle Bearbeitungen rückgängig.",
+        "rotate": "Drehung übernommen. Rückgängig über den Clip oder Alle Bearbeitungen rückgängig.",
         "undoOne": "Bearbeitung für diesen Clip rückgängig gemacht.",
         "undoAll": "{{count}} Bearbeitung(en) rückgängig gemacht."
       },
@@ -2427,8 +2435,8 @@
       "secondaryBackupTitle": "Server-Backup",
       "secondaryBackupCancelledTitle": "Server-Backup abgebrochen",
       "secondaryBackupCancelledBody": "Lokales Backup bleibt. Server-Ordner kann unvollständig sein.",
-      "remoteRenameFailedTitle": "Server-Backup-Umbenennung",
-      "title": "SD-Monitor"
+      "title": "SD-Monitor",
+      "remoteRenameFailedTitle": "Server-Backup-Umbenennung"
     },
     "tile": {
       "fullscreenNamed": "{{name}} Vollbild",
@@ -2475,7 +2483,7 @@
       "sd": "Backup, Leeren/Auswerfen, Auto-Import und Limits sind optional und später änderbar.",
       "qr": "QR-Scan-Optionen können später in den Einstellungen gesetzt werden.",
       "server": "Server-Zugang kann später eingerichtet werden.",
-      "workplace": "Dropzone und Operator kannst du später jederzeit ändern.",
+      "workplace": "Darstellung, Dropzone und Operator kannst du später jederzeit ändern.",
       "media": "Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar.",
       "output": "Ausgabe-Einstellungen sind optional — Vorgabewerte bleiben, wenn du überspringst.",
       "import": "Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar."
@@ -2514,40 +2522,30 @@
       "serverMissing": "— Server fehlt —",
       "storageMissingHint": "Ohne Speicherort können Vorgänge nicht abgelegt werden. Du kannst ihn jederzeit in den Einstellungen setzen."
     },
-    "finish": "Loslegen",
+    "finish": "Einrichtung abschließen",
     "skipAll": "Gesamte Einrichtung überspringen",
     "complete": "Einrichtung abgeschlossen.",
     "completeTitle": "Erfolg",
-    "celebration": {
-      "eyebrow": "Fertig",
-      "title": "Alles bereit",
-      "headline": "Einrichtung abgeschlossen",
-      "body": "Du kannst jetzt Vorgänge anlegen und Medien verarbeiten.",
-      "toApp": "Zur App",
-      "progressAria": "Einrichtung abgeschlossen",
-      "serverConnected": "Server verbunden",
-      "serverLater": "Server später"
-    },
     "import": {
       "backupHint": "Importiert die Karte im empfohlenen Workflow über eine lokale Kopie.",
       "qrHint": "QR-Dateien bleiben standardmäßig erhalten. Scan-Dauer und Aufräumen liegen unter Weitere Optionen.",
       "backupPcNameHint": "Backup-Ordner werden mit „{{name}}“ markiert."
     },
     "intro": {
-      "appearance": "Wähle das Erscheinungsbild der App. Du kannst es später jederzeit in den Einstellungen ändern.",
+      "appearance": "Willkommen bei Aero Tandem Studio. Lege Darstellung, Dropzone und Operator fest. Alles Weitere kannst du später in den Einstellungen anpassen.",
       "import": "Lege hier die Import-Standards fest: Backup, Leeren, Import und Auswerfen. QR-Löschregeln und weitere Details findest du später in den Einstellungen.",
       "storage": "Fertige Vorgänge werden im Speicherort abgelegt.",
       "upload": "Upload ist optional. Wenn du ihn jetzt nicht brauchst, lass ihn einfach aus und richte den Server später ein.",
-      "workplace": "Dropzone und dein Name. Alles Weitere kannst du später in den Einstellungen anpassen.",
-      "workplaceSimple": "Dropzone und dein Name. Speicherordner und Medien laufen mit den Vorgaben.",
+      "workplaceSimple": "Darstellung, Dropzone und dein Name. Speicherordner und Medien laufen mit den Vorgaben.",
       "connectionSimple": "Wir suchen den Server im Netzwerk. Token eingeben und verbinden — später jederzeit änderbar.",
+      "mode": "Wie soll die Einrichtung ablaufen? Den Modus kannst du später in den Einstellungen ändern.",
+      "media": "Lege Backup, Auto-Import, Auswerfen und QR-Scan fest. USB, Größenwarnung und QR-Details liegen unter Weitere Optionen.",
+      "output": "Codec, Strategie und Hardware-Beschleunigung. Intro und Zusammenfügen liegen unter weiteren Optionen.",
+      "workplace": "Dropzone und dein Name. Alles Weitere kannst du später in den Einstellungen anpassen.",
       "connectionNetworkTitle": "Verbindung sicherstellen",
       "connectionWifi": "WLAN",
       "connectionCable": "Kabel",
-      "connectionConnected": "Verbunden",
-      "mode": "Wie soll die Einrichtung ablaufen? Den Modus kannst du später in den Einstellungen ändern.",
-      "media": "Lege Backup, Auto-Import, Auswerfen und QR-Scan fest. USB, Größenwarnung und QR-Details liegen unter Weitere Optionen.",
-      "output": "Codec, Strategie und Hardware-Beschleunigung. Intro und Zusammenfügen liegen unter weiteren Optionen."
+      "connectionConnected": "Verbunden"
     },
     "mode": {
       "simpleTitle": "Einfach",
@@ -2571,7 +2569,7 @@
     },
     "standardFolderTitle": "Standardordner",
     "steps": {
-      "appearance": "Darstellung",
+      "appearance": "Willkommen",
       "mode": "Einrichtungsmodus",
       "workplace": "Persönlich",
       "storage": "Speicherort",
@@ -2587,13 +2585,12 @@
       "amsHint": "Wir suchen automatisch nach der Buchungs-Bridge. Gefundene Pfade kannst du übernehmen; sonst richtest du den Server manuell ein.",
       "amsHintSimple": "Gefundenen Server antippen, Token eingeben, verbinden.",
       "connectedSimple": "Verbunden. Du kannst weitergehen.",
-      "noneFoundSimple": "Kein Server gefunden. Erneut suchen — oder diesen Schritt überspringen.",
-      "noneFoundWifiOnly": "WLAN ist verbunden, der Server nicht. Oft ist das das Internet-WLAN. Kabel ist am zuverlässigsten.",
+      "noneFoundSimple": "Kein Server gefunden. Erneut suchen oder diesen Schritt überspringen — Verbindung später in den Einstellungen.",
       "connectAndApply": "Mit Server verbinden",
       "connectRequired": "Bitte zuerst mit dem Server verbinden.",
       "connectedNoPaths": "AMS verbunden — keine Pfadvorschläge. Bitte Server manuell eintragen.",
       "manualHint": "Wähle ein Standardprofil oder trage SMB-Adresse und Zugangsdaten ein.",
-      "noneFound": "Keine Bridge gefunden. Erneut suchen oder manuell einrichten.",
+      "noneFound": "Keine Bridge gefunden. Du kannst erneut suchen oder den Server manuell einrichten.",
       "optionalNote": "Empfohlen, wenn AMS oder SMB im Netzwerk verfügbar ist — jederzeit später in den Einstellungen änderbar.",
       "secondPathHint": "Zusätzliche Kopie des lokalen Backups auf den Server. Die Ziel-URL steht im Server-Profil.",
       "pathsApplied": "Pfade übernommen: {{primary}}",
@@ -2609,7 +2606,8 @@
       "skipAms": "Ohne Server fortfahren",
       "tokenHint": "Oft dasselbe Passwort wie für den SMB-Server.",
       "tokenPlaceholder": "Token / Schlüssel",
-      "tokenRequired": "Bitte AMS-Token oder Schlüssel eingeben."
+      "tokenRequired": "Bitte AMS-Token oder Schlüssel eingeben.",
+      "noneFoundWifiOnly": "WLAN ist verbunden, der Server nicht. Oft ist das das Internet-WLAN. Kabel ist am zuverlässigsten."
     },
     "defaultMediaDir": {
       "alternateChoice": "Alternative: {{path}}",
@@ -2620,7 +2618,17 @@
       "proceedAnyway": "Trotzdem fortfahren?",
       "warningsTitle": "Hinweise zum Speicherort:"
     },
-    "operatorRequired": "Bitte „Ich bin“ setzen."
+    "operatorRequired": "Bitte „Ich bin“ setzen.",
+    "celebration": {
+      "eyebrow": "Fertig",
+      "title": "Alles bereit",
+      "headline": "Einrichtung abgeschlossen",
+      "body": "Du kannst jetzt Vorgänge anlegen und Medien verarbeiten.",
+      "toApp": "Zur App",
+      "progressAria": "Einrichtung abgeschlossen",
+      "serverConnected": "Server verbunden",
+      "serverLater": "Server später"
+    }
   },
   "dateField": {
     "chooseDateAria": "Datum wählen",

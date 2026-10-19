@@ -10,6 +10,10 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+### Verbessert
+
+- Einstellungen → QR-Code: kurze Video-Stubs nach Import optional aus der Session entfernen (Standard an, Schwelle 5 s) — SD-Backup bleibt unverändert
+
 ## [0.9.0] - 2026-10-17
 
 ### Neu

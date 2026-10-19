@@ -61,6 +61,26 @@
       "photos": "Fotos",
       "themeLight": "Claro",
       "themeDark": "Oscuro",
+      "language": "Idioma",
+      "storageLocation": "Ubicación de almacenamiento",
+      "dropzonePlaceholder": "Zona de entrega…",
+      "actions": "Acciones",
+      "all": "Todos",
+      "date": "Fecha",
+      "drive": "Unidad {{name}}",
+      "filesCount": "{{count}} archivos",
+      "filesCountWithSize": "{{count}} archivos · {{sizeMb}} MB",
+      "name": "Nombre",
+      "no": "no",
+      "none": "Ninguno",
+      "preview": "Vista previa",
+      "sdCard": "Tarjeta SD",
+      "selectedSummary": "seleccionados: {{count}} ({{sizeMb}} MB)",
+      "size": "Tamaño",
+      "sortAsc": "↑ Asc",
+      "sortDesc": "↓ Desc",
+      "type": "Tipo",
+      "yes": "sí",
       "themeTeamSpirit": "Dark Spirit",
       "themeDeutschland": "Alemania",
       "themeDeutschlandDark": "Alemania Noche",
@@ -86,27 +106,7 @@
       "themePrussianDay": "Prussian Day",
       "themePrussianNight": "Prussian Night",
       "themeFsz": "FSZ Oscuro",
-      "themeFszLight": "FSZ Claro",
-      "language": "Idioma",
-      "storageLocation": "Ubicación de almacenamiento",
-      "dropzonePlaceholder": "Zona de entrega…",
-      "actions": "Acciones",
-      "all": "Todos",
-      "date": "Fecha",
-      "drive": "Unidad {{name}}",
-      "filesCount": "{{count}} archivos",
-      "filesCountWithSize": "{{count}} archivos · {{sizeMb}} MB",
-      "name": "Nombre",
-      "no": "no",
-      "none": "Ninguno",
-      "preview": "Vista previa",
-      "sdCard": "Tarjeta SD",
-      "selectedSummary": "seleccionados: {{count}} ({{sizeMb}} MB)",
-      "size": "Tamaño",
-      "sortAsc": "↑ Asc",
-      "sortDesc": "↓ Desc",
-      "type": "Tipo",
-      "yes": "sí"
+      "themeFszLight": "FSZ Claro"
     },
     "language": {
       "de": "Alemán",
@@ -135,11 +135,11 @@
     },
     "areas": {
       "workplace": "Personal",
-      "appearance": "Apariencia",
       "media": "Medios",
       "connection": "Conexión",
       "output": "Salida",
-      "maintenance": "Mantenimiento"
+      "maintenance": "Mantenimiento",
+      "appearance": "Apariencia"
     },
     "complexity": {
       "simple": "Simple",
@@ -152,7 +152,7 @@
     "general": {
       "appearance": {
         "title": "Apariencia",
-        "description": "Diseño de la interfaz (claro, oscuro o especial).",
+        "description": "Modo claro u oscuro de la interfaz.",
         "quickAccessHint": "También puedes cambiar temas con el icono de paleta junto a Configuración en la barra superior; la app principal sigue visible.",
         "groups": {
           "base": "Básicos",
@@ -430,7 +430,11 @@
         "removePhotoHint": "Se revisan fotos vecinas de la misma serie (≤10 s); se detiene tras 3 fotos sin QR por dirección.",
         "removeVideo": "Quitar clip de video QR tras un análisis correcto",
         "maxDuration": "Duración máx. del clip para borrar (s)",
-        "maxDurationHint": "Solo se quitan clips de esta duración o menor (predeterminado: 10 s)."
+        "maxDurationHint": "Solo se quitan clips de esta duración o menor (predeterminado: 10 s).",
+        "cleanupShortVideos": "Quitar videos cortos de la sesión tras importar",
+        "cleanupShortVideosHint": "Tras importar y el QR opcional: quita clips nuevos ≤ umbral de carpeta de trabajo y lista — el respaldo SD no cambia. Aciertos QR y duración desconocida se conservan.",
+        "cleanupShortMaxSec": "Duración máx. clip corto (s)",
+        "cleanupShortMaxSecHint": "Solo clips recién importados de esta duración o menor (predeterminado: 5 s)."
       }
     },
     "sd": {
@@ -537,11 +541,6 @@
         "backupUrlHint": "Segundo destino SMB de este perfil — sin conmutación automática, solo un recurso adicional.",
         "backupUrlPlaceholder": "smb://…/backup"
       },
-      "diagnostics": {
-        "title": "Diagnóstico",
-        "switch": "Enviar informes de error",
-        "description": "Solo mensajes de error y datos técnicos (p. ej. el nombre de esta PC). Sin medios ni datos de clientes."
-      },
       "upload": {
         "title": "Subida",
         "afterCreate": "Subir al servidor tras crear",
@@ -590,6 +589,11 @@
         "suggestBackupLine": " · Respaldo: {{url}}",
         "suggestBody": "Primario: {{primary}}{{backup}}",
         "suggestTitle": "Rutas SMB desde búsqueda de reservas"
+      },
+      "diagnostics": {
+        "title": "Diagnóstico",
+        "switch": "Enviar informes de error",
+        "description": "Solo mensajes de error y datos técnicos (p. ej. el nombre de esta PC). Sin medios ni datos de clientes."
       }
     },
     "save": {
@@ -1211,7 +1215,9 @@
     "import": {
       "label": "Importar",
       "summary": "{{videos}} videos, {{photos}} fotos",
-      "skipped": " · {{count}} omitidos"
+      "skipped": " · {{count}} omitidos",
+      "shortClipRemoved": "{{count}} video corto eliminado (≤ {{maxSec}} s)",
+      "shortClipRemovedMany": "{{count}} videos cortos eliminados (≤ {{maxSec}} s)"
     },
     "qr": {
       "label": "Código QR",
@@ -1261,6 +1267,7 @@
       "bgFailMessage": "{{detail}} Reintentar en Trabajos.",
       "bgFailHint": "Reintenta desde Trabajos.",
       "bgCancelled": "Subida cancelada — se puede reintentar en Trabajos.",
+      "titleLater": "Subida · después",
       "remoteMarkedDone": "Marcado como listo — la carpeta ya está en el servidor.",
       "remoteReplaced": "Carpeta del servidor reemplazada y subida.",
       "remoteHandoffFailed": "Marcado como listo. No se pudo iniciar la entrega a la nube — revisa el estado más tarde en Trabajos."
@@ -1279,8 +1286,8 @@
     },
     "media": {
       "kindAria": "Tipo de medio",
-      "clearVideos": "Vaciar todos los videos",
-      "clearPhotos": "Vaciar todas las fotos",
+      "clearVideos": "Vaciar videos",
+      "clearPhotos": "Vaciar fotos",
       "clearingVideos": "Vaciando…",
       "clearingPhotos": "Vaciando…",
       "clearedVideos": "Videos vaciados",
@@ -1644,20 +1651,6 @@
     "appendTitleWait": "Solo cuando termine la subida",
     "appendTitleBusy": "Ya hay un reenvío en curso",
     "appendTitleOk": "Agregar más medios a la misma carpeta del cliente",
-    "sdBackups": {
-      "title": "Respaldos SD",
-      "loading": "Respaldos SD…",
-      "openFolder": "Abrir carpeta",
-      "server": "Respaldo en servidor",
-      "copyRemotePath": "Copiar ruta del servidor",
-      "pathCopied": "Ruta copiada al portapapeles.",
-      "remotePathHint": "Sin acceso directo desde la app — copia la ruta y abre el recurso de respaldo configurado en el servidor.",
-      "renamedLocal": "Renombrado (local)",
-      "renamedRemote": "Renombrado (servidor)",
-      "originalName": "Originalmente: {{name}}",
-      "remoteRenameFailed": "Error al renombrar en el servidor: {{error}}",
-      "folderMissingHint": "La carpeta de respaldo SD fue eliminada o movida."
-    },
     "files": "Archivos",
     "appended": "Reenviado",
     "appendedFolder": "Reenvío {{folder}}",
@@ -1809,6 +1802,20 @@
     },
     "appendTitleCloudOffline": "Sin conexión al servidor — reenvío a la nube cuando haya conexión",
     "appendTitleUploadOff": "Carga a la nube desactivada — actívala en ajustes para reenviar medios",
+    "sdBackups": {
+      "title": "Respaldos SD",
+      "loading": "Respaldos SD…",
+      "openFolder": "Abrir carpeta",
+      "server": "Respaldo en servidor",
+      "copyRemotePath": "Copiar ruta del servidor",
+      "pathCopied": "Ruta copiada al portapapeles.",
+      "remotePathHint": "Sin acceso directo desde la app — copia la ruta y abre el recurso de respaldo configurado en el servidor.",
+      "renamedLocal": "Renombrado (local)",
+      "renamedRemote": "Renombrado (servidor)",
+      "originalName": "Originalmente: {{name}}",
+      "remoteRenameFailed": "Error al renombrar en el servidor: {{error}}",
+      "folderMissingHint": "La carpeta de respaldo SD fue eliminada o movida."
+    },
     "jobs": {
       "pageSize": "{{count}} / página",
       "pageSizeAria": "Entradas por página",
@@ -2017,6 +2024,7 @@
       "readingVideo": "Leyendo video para búsqueda QR…",
       "removingQrPhotos": "Quitando fotos QR de la lista…",
       "removingQrVideo": "Quitando el clip QR de la lista…",
+      "removingShortClips": "Quitando clips cortos…",
       "scanGeneric": "Buscando código QR…",
       "scanPhotos": "Buscando código QR en fotos…",
       "scanVideos": "Buscando código QR en videos…",
@@ -2084,7 +2092,7 @@
       "success": {
         "trim": "Recorte aplicado. Deshazlo desde el clip o con Deshacer todas las ediciones.",
         "split": "Video dividido. Deshazlo desde un clip parcial o con Deshacer todas las ediciones.",
-        "rotate": "Rotación guardada — se aplica al crear. Deshazla desde el clip o con Deshacer todas las ediciones.",
+        "rotate": "Rotación aplicada. Deshazla desde el clip o con Deshacer todas las ediciones.",
         "undoOne": "Se deshizo la edición de este clip.",
         "undoAll": "Se deshicieron {{count}} edición(es)."
       },
@@ -2425,8 +2433,8 @@
       "secondaryBackupTitle": "Respaldo en servidor",
       "secondaryBackupCancelledTitle": "Respaldo en servidor cancelado",
       "secondaryBackupCancelledBody": "El respaldo local se conserva. La carpeta remota puede quedar incompleta.",
-      "remoteRenameFailedTitle": "Renombrado en servidor",
-      "title": "Monitor SD"
+      "title": "Monitor SD",
+      "remoteRenameFailedTitle": "Renombrado en servidor"
     },
     "tile": {
       "fullscreenNamed": "{{name}} pantalla completa",
@@ -2473,7 +2481,7 @@
       "sd": "Respaldo, limpiar/expulsar, importación automática y límites son opcionales y se pueden cambiar después.",
       "qr": "Las opciones de escaneo QR se pueden configurar después.",
       "server": "El acceso al servidor se puede configurar después.",
-      "workplace": "Puedes cambiar la zona de salto y el operador después en cualquier momento.",
+      "workplace": "Puedes cambiar la apariencia, la zona de salto y el operador después en cualquier momento.",
       "media": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después.",
       "output": "Los ajustes de salida son opcionales; si omites, se conservan los valores predeterminados.",
       "import": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después."
@@ -2512,40 +2520,30 @@
       "serverMissing": "— falta servidor —",
       "storageMissingHint": "Sin una ubicación de almacenamiento, los trabajos no se pueden guardar. Puedes definirla después en la configuración."
     },
-    "finish": "Empezar",
+    "finish": "Finalizar configuración",
     "skipAll": "Omitir toda la configuración",
     "complete": "Configuración completada.",
     "completeTitle": "Éxito",
-    "celebration": {
-      "eyebrow": "Listo",
-      "title": "Todo listo",
-      "headline": "Configuración completada",
-      "body": "Ya puedes crear trabajos y procesar medios.",
-      "toApp": "Ir a la app",
-      "progressAria": "Configuración completada",
-      "serverConnected": "Servidor conectado",
-      "serverLater": "Servidor después"
-    },
     "import": {
       "backupHint": "Importa la tarjeta con el flujo recomendado usando una copia local.",
       "qrHint": "Los archivos QR se conservan por defecto. Duración del escaneo y limpieza están en Más opciones.",
       "backupPcNameHint": "Las carpetas de respaldo se marcan con «{{name}}»."
     },
     "intro": {
-      "appearance": "Elige el aspecto de la app. Puedes cambiarlo después en la configuración en cualquier momento.",
+      "appearance": "Bienvenido a Aero Tandem Studio. Define apariencia, zona de salto y operador. Todo lo demás se puede ajustar después en la configuración.",
       "import": "Configura aquí los valores de importación: respaldo, limpiar, importar y expulsar. Las reglas de borrado QR y más detalles se pueden ajustar después.",
       "storage": "Los trabajos terminados se guardan en la ubicación de almacenamiento.",
       "upload": "La subida es opcional. Si no la necesitas ahora, déjala apagada y configura el servidor después.",
-      "workplace": "Zona de salto y tu nombre. Todo lo demás se puede ajustar después en la configuración.",
-      "workplaceSimple": "Zona de salto y tu nombre. Las carpetas y los medios usan los valores predeterminados.",
+      "workplaceSimple": "Apariencia, zona de salto y tu nombre. Las carpetas y los medios usan los valores predeterminados.",
       "connectionSimple": "Buscamos el servidor en la red. Introduce el token y conéctate — lo puedes cambiar después.",
+      "mode": "¿Cómo debe ser la configuración? Puedes cambiar el modo después en ajustes.",
+      "media": "Define respaldo, importación automática, expulsión y escaneo QR. USB, aviso de tamaño y detalles QR están en Más opciones.",
+      "output": "Códec, estrategia y aceleración por hardware. Intro y concatenación están en más opciones.",
+      "workplace": "Zona de salto y tu nombre. Todo lo demás se puede ajustar después en la configuración.",
       "connectionNetworkTitle": "Asegúrate de estar conectado",
       "connectionWifi": "Wi‑Fi",
       "connectionCable": "Cable",
-      "connectionConnected": "Conectado",
-      "mode": "¿Cómo debe ser la configuración? Puedes cambiar el modo después en ajustes.",
-      "media": "Define respaldo, importación automática, expulsión y escaneo QR. USB, aviso de tamaño y detalles QR están en Más opciones.",
-      "output": "Códec, estrategia y aceleración por hardware. Intro y concatenación están en más opciones."
+      "connectionConnected": "Conectado"
     },
     "mode": {
       "simpleTitle": "Simple",
@@ -2569,7 +2567,7 @@
     },
     "standardFolderTitle": "Carpeta predeterminada",
     "steps": {
-      "appearance": "Apariencia",
+      "appearance": "Bienvenida",
       "mode": "Modo de configuración",
       "workplace": "Personal",
       "storage": "Almacenamiento",
@@ -2585,13 +2583,12 @@
       "amsHint": "Buscamos automáticamente el puente de reservas. Puedes aplicar las rutas encontradas o configurar el servidor manualmente.",
       "amsHintSimple": "Toca un servidor encontrado, introduce el token y conéctate.",
       "connectedSimple": "Conectado. Puedes continuar.",
-      "noneFoundSimple": "No se encontró servidor. Busca de nuevo u omite este paso.",
-      "noneFoundWifiOnly": "El Wi‑Fi está conectado, pero el servidor no. A menudo es el Wi‑Fi de internet. El cable es lo más fiable.",
+      "noneFoundSimple": "No se encontró servidor. Busca de nuevo u omite este paso — puedes conectar después en ajustes.",
       "connectAndApply": "Conectar con el servidor",
       "connectRequired": "Conéctate primero al servidor.",
       "connectedNoPaths": "AMS conectado — sin sugerencias de ruta. Introduce el servidor manualmente.",
       "manualHint": "Elige un perfil predeterminado o introduce la dirección SMB y las credenciales.",
-      "noneFound": "No se encontró el puente. Busca de nuevo o configúralo a mano.",
+      "noneFound": "No se encontró el puente. Busca de nuevo o configura el servidor manualmente.",
       "optionalNote": "Recomendado si AMS o SMB están disponibles en la red — se puede cambiar después en ajustes.",
       "secondPathHint": "Copia adicional del respaldo local al servidor. La URL de destino está en el perfil del servidor.",
       "pathsApplied": "Rutas aplicadas: {{primary}}",
@@ -2607,7 +2604,8 @@
       "skipAms": "Continuar sin servidor",
       "tokenHint": "A menudo es la misma contraseña que para el servidor SMB.",
       "tokenPlaceholder": "Token / clave",
-      "tokenRequired": "Introduce el token o clave de AMS."
+      "tokenRequired": "Introduce el token o clave de AMS.",
+      "noneFoundWifiOnly": "El Wi‑Fi está conectado, pero el servidor no. A menudo es el Wi‑Fi de internet. El cable es lo más fiable."
     },
     "defaultMediaDir": {
       "alternateChoice": "Alternativa: {{path}}",
@@ -2618,7 +2616,17 @@
       "proceedAnyway": "¿Continuar de todos modos?",
       "warningsTitle": "Notas sobre la ubicación de almacenamiento:"
     },
-    "operatorRequired": "Indica quién eres."
+    "operatorRequired": "Indica quién eres.",
+    "celebration": {
+      "eyebrow": "Listo",
+      "title": "Todo listo",
+      "headline": "Configuración completada",
+      "body": "Ya puedes crear trabajos y procesar medios.",
+      "toApp": "Ir a la app",
+      "progressAria": "Configuración completada",
+      "serverConnected": "Servidor conectado",
+      "serverLater": "Servidor después"
+    }
   },
   "dateField": {
     "chooseDateAria": "Elegir fecha",

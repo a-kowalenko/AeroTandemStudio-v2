@@ -6,6 +6,7 @@ import { showAdvanced } from "@/lib/settingsUi";
 import { SettingsAccordion } from "../SettingsAccordion";
 import { SettingsHintIcon } from "../SettingsHintIcon";
 import { SettingsSection } from "../SettingsSection";
+import { clampCleanupShortVideosMaxSec } from "@/lib/shortClipCleanupDecision";
 import type { SettingsTabBaseProps } from "../types";
 
 export function QrTab({ draft, patch, patchNow, disclosure }: SettingsTabBaseProps) {
@@ -109,6 +110,50 @@ export function QrTab({ draft, patch, patchNow, disclosure }: SettingsTabBasePro
               patch(
                 "qr_remove_video_max_duration_sec",
                 Number.isFinite(n) ? Math.min(300, Math.max(1, Math.round(n))) : 10,
+              );
+            }}
+          />
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={draft.cleanup_short_videos_after_import}
+            onCheckedChange={(v) =>
+              patchNow("cleanup_short_videos_after_import", v === true)
+            }
+          />
+          <span className="inline-flex items-center gap-1.5">
+            {t("settings.qr.after.cleanupShortVideos")}
+            <SettingsHintIcon
+              text={t("settings.qr.after.cleanupShortVideosHint")}
+            />
+          </span>
+        </label>
+        <div
+          className={
+            draft.cleanup_short_videos_after_import
+              ? "space-y-1.5 pl-6"
+              : "pointer-events-none space-y-1.5 pl-6 opacity-50"
+          }
+        >
+          <div className="flex items-center gap-1.5">
+            <Label>{t("settings.qr.after.cleanupShortMaxSec")}</Label>
+            <SettingsHintIcon
+              text={t("settings.qr.after.cleanupShortMaxSecHint")}
+            />
+          </div>
+          <Input
+            type="number"
+            min={1}
+            max={60}
+            value={draft.cleanup_short_videos_max_sec}
+            disabled={!draft.cleanup_short_videos_after_import}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              patch(
+                "cleanup_short_videos_max_sec",
+                clampCleanupShortVideosMaxSec(
+                  Number.isFinite(n) ? n : draft.cleanup_short_videos_max_sec,
+                ),
               );
             }}
           />

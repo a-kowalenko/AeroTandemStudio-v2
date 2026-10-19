@@ -84,7 +84,7 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 
 ### Performance-Backlog
 
-OPT-0 … OPT-20 ✅ (OPT-13 entfernt). **OPT-21** CapCut schnell+robust — Slice 0+A ✅; 21B–E offen · Spec: `@docs/opt/open/21-capcut-export.md`. **OPT-22** ✅. **OPT-23** SMB-Stabilität — Slice A–F ✅ (Code; manuell macOS/Linux offen) · Spec: `@docs/opt/open/23-smb-stability.md`. **OPT-24** Kaltstart-Splash + UI-Responsiveness — ✅ A–F (Code; manuell Kaltstart/Laptop-Last/Export-Dauer offen) · Spec: `@docs/opt/open/24-startup-ui-responsiveness.md`. **OPT-25** SD-Import History-Progress + Hash-Reuse — ✅ A–C · Spec: `@docs/opt/open/25-sd-import-history-progress.md`. **OPT-26** Drehung: Freeze-Fix (A) + Rotation erst beim Export (B–D) — ✅ A–F (Code; manuell iPhone/QuickTime offen) · Spec: `@docs/opt/open/26-rotation-export.md`. **OPT-27** Auto-Concat Orientierung harmonisieren (Copy / Partial Bake) — 🔄 Slice 0–D ✅ (Code; E manuell offen) · Spec: `@docs/opt/open/27-auto-orientation-harmonize.md`. Index: `@docs/optimization_plan.md`.
+OPT-0 … OPT-20 ✅ (OPT-13 entfernt). **OPT-21** CapCut schnell+robust — Slice 0+A ✅; 21B–E offen · Spec: `@docs/opt/open/21-capcut-export.md`. **OPT-22** ✅. **OPT-23** SMB-Stabilität — Slice A–F ✅ (Code; manuell macOS/Linux offen) · Spec: `@docs/opt/open/23-smb-stability.md`. **OPT-24** Kaltstart-Splash + UI-Responsiveness — ✅ A–F (Code; manuell Kaltstart/Laptop-Last/Export-Dauer offen) · Spec: `@docs/opt/open/24-startup-ui-responsiveness.md`. **OPT-25** SD-Import History-Progress + Hash-Reuse — ✅ A–C · Spec: `@docs/opt/open/25-sd-import-history-progress.md`. **OPT-26** Drehung: Freeze-Fix (A) + Rotation erst beim Export (B–D) — ✅ A–F (Code; manuell iPhone/QuickTime offen) · Spec: `@docs/opt/open/26-rotation-export.md`. **OPT-27** Auto-Concat Orientierung harmonisieren (Copy / Partial Bake) — 🔄 Slice 0–D ✅ (Code; E manuell offen) · Spec: `@docs/opt/open/27-auto-orientation-harmonize.md`. **OPT-28** ✅ (Code; manuell offen) · `@docs/opt/open/28-thumb-delete-stability.md`. **OPT-29** Kurzclips nach Import+QR (Default **an**, **5 s**) — ⬜ offen · Spec: `@docs/opt/open/29-short-clip-cleanup-after-import.md`. Index: `@docs/optimization_plan.md`.
 
 ---
 
@@ -162,6 +162,12 @@ Nur OPT-21B. Danach cargo test.
 Implementiere OPT-27 Slice A aus @docs/opt/open/27-auto-orientation-harmonize.md
 Regeln: @AGENTS.md
 Nur Slice A. Danach cargo test --manifest-path src-tauri/Cargo.toml.
+```
+
+```
+Implementiere OPT-29 Slice 0 aus @docs/opt/open/29-short-clip-cleanup-after-import.md
+Regeln: @AGENTS.md
+Nur Slice 0. Danach npm run check.
 ```
 
 **Performance:** ein Slice pro Session · Index: `@docs/optimization_plan.md`

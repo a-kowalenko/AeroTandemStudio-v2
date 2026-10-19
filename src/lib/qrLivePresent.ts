@@ -17,6 +17,9 @@ export const QR_LIVE_REMOVED_LEAVE_MS = 420;
 export const QR_LIVE_REMOVED_EXIT_MS =
   QR_LIVE_REMOVED_HOLD_MS + QR_LIVE_REMOVED_LEAVE_MS;
 
+/** Many Kurzclips at once — panel shows progress; skip long per-tile hold. */
+export const SHORT_CLIP_BULK_REMOVED_MS = 240;
+
 /** On-screen live thumbs. Hit and removal stay; older scan/miss frames drop first. */
 export const QR_LIVE_FRAME_CAP = 6;
 

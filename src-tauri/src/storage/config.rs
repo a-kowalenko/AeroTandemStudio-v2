@@ -228,6 +228,14 @@ pub struct AppConfig {
         deserialize_with = "de_u32_flexible"
     )]
     pub qr_remove_video_max_duration_sec: u32,
+    /// OPT-29: remove newly imported session clips ≤ max duration after import (+ QR).
+    #[serde(default = "default_true")]
+    pub cleanup_short_videos_after_import: bool,
+    #[serde(
+        default = "default_cleanup_short_videos_max_sec",
+        deserialize_with = "de_u32_flexible"
+    )]
+    pub cleanup_short_videos_max_sec: u32,
     #[serde(default = "default_true")]
     pub sd_auto_backup: bool,
     #[serde(default)]
@@ -709,6 +717,14 @@ fn default_qr_scan_seconds() -> u32 {
 fn default_qr_remove_video_max_duration() -> u32 {
     10
 }
+
+fn default_cleanup_short_videos_max_sec() -> u32 {
+    5
+}
+
+pub fn clamp_cleanup_short_videos_max_sec(sec: u32) -> u32 {
+    sec.clamp(1, 60)
+}
 fn default_sd_backup_mode() -> String {
     "confirm".into()
 }
@@ -909,6 +925,12 @@ impl AppConfig {
             clamp_auto_cleanup_retention_days(self.auto_cleanup_jobs_retention_days);
         self.auto_cleanup_backups_retention_days =
             clamp_auto_cleanup_retention_days(self.auto_cleanup_backups_retention_days);
+    }
+
+    /// OPT-29: clamp short-clip threshold to 1–60 s.
+    pub fn sync_cleanup_short_videos(&mut self) {
+        self.cleanup_short_videos_max_sec =
+            clamp_cleanup_short_videos_max_sec(self.cleanup_short_videos_max_sec);
     }
 
     /// Lokal skips `_fertig.txt` / AMS manifest only in **manual** form mode.
@@ -1176,6 +1198,8 @@ impl Default for AppConfig {
             qr_remove_photo_after_scan: true,
             qr_remove_video_after_scan: true,
             qr_remove_video_max_duration_sec: default_qr_remove_video_max_duration(),
+            cleanup_short_videos_after_import: true,
+            cleanup_short_videos_max_sec: default_cleanup_short_videos_max_sec(),
             sd_auto_backup: true,
             sd_backup_folder: String::new(),
             sd_server_backup_enabled: false,
@@ -1360,6 +1384,7 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
     cfg.sync_settings_ui_mode();
     cfg.sync_sd_server_backup_mode();
     cfg.sync_auto_cleanup_retention();
+    cfg.sync_cleanup_short_videos();
     cfg.sync_outro();
     cfg.sync_instructor_foto();
     cfg.sync_server_profiles();
@@ -1486,6 +1511,7 @@ impl ConfigStore {
         normalized.sync_log_min_level();
         normalized.sync_settings_ui_mode();
         normalized.sync_sd_server_backup_mode();
+        normalized.sync_cleanup_short_videos();
         normalized.sync_outro();
         normalized.sync_instructor_foto();
         normalized.sync_cloud_lookup_token();
@@ -1586,6 +1612,15 @@ mod tests {
         assert!(cfg.qr_remove_video_after_scan);
         assert_eq!(cfg.qr_remove_video_max_duration_sec, 10);
         assert_eq!(cfg.qr_video_scan_seconds, 5);
+        assert!(cfg.cleanup_short_videos_after_import);
+        assert_eq!(cfg.cleanup_short_videos_max_sec, 5);
+    }
+
+    #[test]
+    fn merge_deserializes_cleanup_short_video_defaults() {
+        let cfg = merge_with_defaults(serde_json::json!({ "ort": "Test" })).unwrap();
+        assert!(cfg.cleanup_short_videos_after_import);
+        assert_eq!(cfg.cleanup_short_videos_max_sec, 5);
     }
 
     #[test]
@@ -2318,6 +2353,17 @@ mod tests {
         cfg.outro_dauer = 42;
         cfg.sync_outro();
         assert_eq!(cfg.outro_dauer, 10);
+    }
+
+    #[test]
+    fn sync_cleanup_short_videos_clamps_max_sec() {
+        let mut cfg = AppConfig::default();
+        cfg.cleanup_short_videos_max_sec = 0;
+        cfg.sync_cleanup_short_videos();
+        assert_eq!(cfg.cleanup_short_videos_max_sec, 1);
+        cfg.cleanup_short_videos_max_sec = 100;
+        cfg.sync_cleanup_short_videos();
+        assert_eq!(cfg.cleanup_short_videos_max_sec, 60);
     }
 
     #[test]

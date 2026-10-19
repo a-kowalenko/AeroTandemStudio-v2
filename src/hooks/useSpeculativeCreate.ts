@@ -15,7 +15,7 @@ import {
 
 /** Debounce after core media/encode fingerprint is stable. */
 const DEBOUNCE_MS = 400;
-/** Extra settle after pipeline becomes idle (import/QR/SD). */
+/** Extra settle after pipeline becomes idle (import/QR/SD/post-import hygiene). */
 const SETTLE_MS = 1000;
 
 type Options = {

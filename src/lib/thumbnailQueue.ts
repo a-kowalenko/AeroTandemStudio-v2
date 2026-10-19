@@ -386,6 +386,55 @@ class PreviewThumbnailQueue {
     }
   }
 
+  /** After idle — brief pause so Windows releases FFmpeg file handles. */
+  async awaitReadyForDelete(path: string, timeoutMs = 12000): Promise<void> {
+    await this.awaitIdleForPath(path, timeoutMs);
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 100);
+    });
+  }
+
+  async awaitReadyForDeleteAll(paths: string[], timeoutMs = 4000): Promise<void> {
+    if (paths.length === 0) return;
+    await Promise.all(
+      paths.map((path) => this.awaitReadyForDelete(path, timeoutMs)),
+    );
+  }
+
+  /**
+   * Cancel queued poster work for paths about to be deleted (OPT-29 / OPT-28).
+   * In-flight FFmpeg still must drain via {@link awaitReadyForDelete}.
+   */
+  preparePathsForDeletion(paths: string[]) {
+    if (paths.length === 0) return;
+    const keys = new Set(paths.map(pathKey));
+
+    this.delayedWarm = this.delayedWarm.filter((e) => !keys.has(pathKey(e.path)));
+
+    const dropPending: string[] = [];
+    for (const [mem, item] of this.pending) {
+      if (keys.has(pathKey(item.path))) dropPending.push(mem);
+    }
+    const cancelled = new Error("poster_cancelled_for_delete");
+    for (const mem of dropPending) {
+      const item = this.pending.get(mem);
+      this.pending.delete(mem);
+      if (!item) continue;
+      for (const w of item.resolvers) w.reject(cancelled);
+    }
+
+    this.adopts = this.adopts.filter(
+      (a) =>
+        !keys.has(pathKey(a.fromPath)) && !keys.has(pathKey(a.toPath)),
+    );
+
+    for (const p of paths) {
+      this.primedPriority.delete(pathKey(p));
+    }
+
+    this.pumpSoon();
+  }
+
   private isPathThumbBusy(path: string): boolean {
     const want = pathKey(path);
     for (const key of this.inFlight) {

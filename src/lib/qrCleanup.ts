@@ -83,7 +83,8 @@ export async function maybeRemoveQrVideo(
   }
 
   options?.onBeforeRemove?.(video.path);
-  await previewThumbnailQueue.awaitIdleForPath(video.path, 5000);
+  previewThumbnailQueue.preparePathsForDeletion([video.path]);
+  await previewThumbnailQueue.awaitReadyForDelete(video.path, 12000);
   const del = await deleteWorkingCopy(video.path);
   if (del.status !== "deleted") {
     console.warn(

@@ -125,6 +125,11 @@ import {
   shouldAutoQrAfterImport,
   type AutoQrScanOutcome,
 } from "./lib/autoQrScan";
+import {
+  emptyShortClipCleanup,
+  formatShortClipCleanupSummary,
+  runPostImportVideoHygiene,
+} from "./lib/shortClipCleanup";
 import { mediaKind } from "./lib/media";
 import { primeQrEdgePosters } from "./lib/thumbnailQueue";
 import {
@@ -786,95 +791,103 @@ function App() {
           });
 
     const hasNewMedia = newVideoPaths.length > 0 || newPhotoPaths.length > 0;
+    let qrAction: DialogActionStatus | null = null;
+    let qrHit: AutoQrScanOutcome | null = null;
+    let shortClipCleanup = emptyShortClipCleanup();
+
+    const onBeforeRemoveVideo = (p: string) => {
+      useVideoStore.getState().clearCutMarksFor([p]);
+      void discardVideoCutUndoForPath(p);
+    };
+
     if (!willAutoScan) {
       if (hasNewMedia) {
         requestKundenIdFocusAfterImport({ scanned: false });
       }
-      return { importAction, qrAction: null, qrHit: null };
-    }
-
-    useSdStore.getState().setWorkflowProgress(null);
-    // Overlay stays suppressed while sdWorkflowUiActive; message feeds SD progress.
-    setLoading(true, t("app.sd.searchingQr"));
-    try {
-      const qr = await withQrScanProgress(
-        [...newVideoPaths, ...newPhotoPaths],
-        () =>
-          runAutoQrAfterImport({
-            videoPaths: newVideoPaths,
-            photoPaths: newPhotoPaths,
-            forceScan,
-            onBeforeRemoveVideo: (p) => {
-              useVideoStore.getState().clearCutMarksFor([p]);
-              void discardVideoCutUndoForPath(p);
-            },
-          }),
-      );
-
-      if (!qr.attempted) {
-        return { importAction, qrAction: null, qrHit: null };
-      }
-
-      if (qr.cancelled) {
-        return {
-          importAction,
-          qrAction: {
-            kind: "qr",
-            label: t("app.qr.label"),
-            tone: "warning",
-            summary: qr.message || t("app.qr.cancelled"),
-          },
-          qrHit: null,
-        };
-      }
-
-      if (qr.found) {
-        const fromOptions = qr.successOptions?.actions?.find((a) => a.kind === "qr");
-        return {
-          importAction,
-          qrAction: fromOptions ?? {
-            kind: "qr",
-            label: t("app.qr.label"),
-            tone: "success",
-            summary: t("app.qr.applied"),
-          },
-          qrHit: qr,
-        };
-      }
-
-      requestKundenIdFocusAfterImport({
-        scanned: true,
-        attempted: true,
-        found: false,
-        cancelled: false,
+      shortClipCleanup = await runPostImportVideoHygiene({
+        newVideoPaths,
+        qrOutcome: null,
+        onBeforeRemoveVideo,
       });
-      return {
-        importAction,
-        qrAction: {
-          kind: "qr",
-          label: t("app.qr.label"),
-          tone: "warning",
-          summary: qr.message || t("app.qr.notFound"),
-        },
-        qrHit: null,
-      };
-    } catch (qrErr) {
-      requestKundenIdFocus();
-      return {
-        importAction,
-        qrAction: {
+    } else {
+      useSdStore.getState().setWorkflowProgress(null);
+      // Overlay stays suppressed while sdWorkflowUiActive; message feeds SD progress.
+      setLoading(true, t("app.sd.searchingQr"));
+      try {
+        const { outcome: qr, cleanup } = await withQrScanProgress(
+          [...newVideoPaths, ...newPhotoPaths],
+          async () => {
+            const outcome = await runAutoQrAfterImport({
+              videoPaths: newVideoPaths,
+              photoPaths: newPhotoPaths,
+              forceScan,
+              onBeforeRemoveVideo,
+            });
+            const cleanup = await runPostImportVideoHygiene({
+              newVideoPaths,
+              qrOutcome: outcome.found ? outcome : null,
+              onBeforeRemoveVideo,
+            });
+            return { outcome, cleanup };
+          },
+        );
+        shortClipCleanup = cleanup;
+
+        if (qr.attempted) {
+          if (qr.cancelled) {
+            qrAction = {
+              kind: "qr",
+              label: t("app.qr.label"),
+              tone: "warning",
+              summary: qr.message || t("app.qr.cancelled"),
+            };
+          } else if (qr.found) {
+            qrHit = qr;
+            const fromOptions = qr.successOptions?.actions?.find(
+              (a) => a.kind === "qr",
+            );
+            qrAction =
+              fromOptions ?? {
+                kind: "qr",
+                label: t("app.qr.label"),
+                tone: "success",
+                summary: t("app.qr.applied"),
+              };
+          } else {
+            requestKundenIdFocusAfterImport({
+              scanned: true,
+              attempted: true,
+              found: false,
+              cancelled: false,
+            });
+            qrAction = {
+              kind: "qr",
+              label: t("app.qr.label"),
+              tone: "warning",
+              summary: qr.message || t("app.qr.notFound"),
+            };
+          }
+        }
+      } catch (qrErr) {
+        requestKundenIdFocus();
+        qrAction = {
           kind: "qr",
           label: t("app.qr.label"),
           tone: "error",
           summary: t("app.qr.scanFailed"),
           detail: String(qrErr),
-        },
-        qrHit: null,
-      };
-    } finally {
-      // autoQrScan no longer clears loading (avoids overlay on manual import).
-      setLoading(false);
+        };
+      } finally {
+        // autoQrScan no longer clears loading (avoids overlay on manual import).
+        setLoading(false);
+      }
     }
+    const shortClipSuffix = formatShortClipCleanupSummary(shortClipCleanup);
+    const finalImportAction: DialogActionStatus = shortClipSuffix
+      ? { ...importAction, summary: importAction.summary + shortClipSuffix }
+      : importAction;
+
+    return { importAction: finalImportAction, qrAction, qrHit };
   }
 
   /** Unified SD pipeline: backup → eject → import/QR; clear only after successful backup.

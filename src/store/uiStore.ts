@@ -135,6 +135,10 @@ type UiState = {
    * After QR crew dropdown workflow finishes: pulse Erstellen once it becomes ready.
    */
   createReadyPulsePending: boolean;
+  /** OPT-29: blocks speculative create until Kurzclip-Sweep finished. */
+  postImportHygieneDepth: number;
+  beginPostImportHygiene: () => void;
+  endPostImportHygiene: () => void;
   showError: (
     message: string,
     title?: string,
@@ -187,6 +191,13 @@ export const useUiStore = create<UiState>((set) => ({
   settingsFocus: null,
   settingsFocusNonce: 0,
   createReadyPulsePending: false,
+  postImportHygieneDepth: 0,
+  beginPostImportHygiene: () =>
+    set((s) => ({ postImportHygieneDepth: s.postImportHygieneDepth + 1 })),
+  endPostImportHygiene: () =>
+    set((s) => ({
+      postImportHygieneDepth: Math.max(0, s.postImportHygieneDepth - 1),
+    })),
 
   showError: (message, title, options) =>
     set({

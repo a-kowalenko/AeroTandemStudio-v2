@@ -37,7 +37,15 @@ export type QrScanJobStage =
   | "scanning"
   | "scanning_videos"
   | "scanning_photos"
-  | "followup";
+  | "followup"
+  | "short_clip_hygiene";
+
+export type ShortClipHygieneProgress = {
+  active: boolean;
+  total: number;
+  done: number;
+  currentPath: string | null;
+};
 
 export type QrFollowupStatus = {
   /** Path currently being decoded (or last completed). */
@@ -139,6 +147,8 @@ type QrScanState = {
    * frame is already gone and the lookup thumb slot is the landing target.
    */
   lookupThumbFlight: QrLookupThumbFlightState | null;
+  /** OPT-29 Kurzclip sweep progress in the QR progress panel. */
+  shortClipHygiene: ShortClipHygieneProgress | null;
   begin: (
     paths: string[],
     stage?: QrScanJobStage,
@@ -190,6 +200,9 @@ type QrScanState = {
   setFollowup: (status: QrFollowupStatus) => void;
   /** Paint stripes red before photos leave the media list. */
   markRemoved: (paths: string[]) => void;
+  beginShortClipHygiene: (total: number) => void;
+  setShortClipHygieneProgress: (done: number, currentPath?: string | null) => void;
+  endShortClipHygiene: () => void;
   /**
    * End neighbor follow-up chrome. If a booking lookup is still showing, keep
    * `busy` so the progress panel does not vanish mid-lookup.
@@ -421,7 +434,33 @@ export function summarizeQrScanProgress(
   lookup: QrLookupUi | null = null,
   /** True only after `beginFollowup` took over the photo list. */
   neighborFollowup = false,
+  shortClipHygiene: ShortClipHygieneProgress | null = null,
 ): QrScanProgressSummary {
+  if (shortClipHygiene?.active && shortClipHygiene.total > 0) {
+    const { total, done, currentPath } = shortClipHygiene;
+    const parts: string[] = [];
+    if (currentPath) {
+      parts.push(tr("qr.progress.currentFile", { name: fileBaseName(currentPath) }));
+    }
+    const percent =
+      total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+    return withLookupDetail(
+      {
+        label: tr("qr.progress.removingShortClips"),
+        detail: parts.join(" · "),
+        percent,
+        indeterminate: done <= 0 && !currentPath,
+        hidePercent: true,
+        metric: `${done}/${total}`,
+        metricLabel: tr("qr.progress.unitVideos"),
+        legend: undefined,
+        fileProgress: undefined,
+      },
+      lookup,
+      false,
+    );
+  }
+
   const entries = Object.entries(byPath);
   // Stripes follow the media list order; ends-first only affects which paths go active.
   const order = scanOrder.length > 0 ? scanOrder : entries.map(([path]) => path);
@@ -603,6 +642,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
   videoEdgeLimited: false,
   lookup: null,
   lookupThumbFlight: null,
+  shortClipHygiene: null,
 
   begin: (paths, stage = "scanning", options) => {
     const unique = dedupeNormalizedPaths(paths);
@@ -623,6 +663,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       videoEdgeLimited: Boolean(options?.videoEdgeLimited),
       lookup: null,
       lookupThumbFlight: null,
+      shortClipHygiene: null,
     });
   },
 
@@ -879,6 +920,39 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
     });
   },
 
+  beginShortClipHygiene: (total) => {
+    if (total <= 0) return;
+    set({
+      busy: true,
+      stage: "short_clip_hygiene",
+      shortClipHygiene: {
+        active: true,
+        total,
+        done: 0,
+        currentPath: null,
+      },
+    });
+  },
+
+  setShortClipHygieneProgress: (done, currentPath) => {
+    set((s) => {
+      const prev = s.shortClipHygiene;
+      if (!prev?.active) return s;
+      return {
+        shortClipHygiene: {
+          ...prev,
+          done,
+          currentPath:
+            currentPath !== undefined ? currentPath : prev.currentPath,
+        },
+      };
+    });
+  },
+
+  endShortClipHygiene: () => {
+    set({ shortClipHygiene: null });
+  },
+
   markRemoved: (paths) => {
     if (paths.length === 0) return;
     const byPath = { ...get().byPath };
@@ -934,6 +1008,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       videoEdgeLimited: false,
       lookup: null,
       lookupThumbFlight: null,
+      shortClipHygiene: null,
     }),
 
   phaseFor: (path) => get().byPath[normalizeMediaPath(path)] ?? null,

@@ -3,7 +3,9 @@ import type { VideoMetadata } from "../lib/tauri";
 import { tr } from "@/i18n";
 import { deleteWorkingCopy, deleteWorkingCopies, importVideos, probeVideo } from "../lib/tauri";
 import { videoPosterBustKey } from "../hooks/useVideoThumbnailSrc";
+import { clampCleanupShortVideosMaxSec } from "../lib/shortClipCleanupDecision";
 import { previewThumbnailQueue, primeQrEdgePosters } from "../lib/thumbnailQueue";
+import { useConfigStore } from "./configStore";
 import { videoEdgeScanPaths } from "./qrScanStore";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
 import { isCancellationError } from "../lib/utils";
@@ -144,16 +146,29 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
             v.filename,
           );
         }
-        // Stagger FFmpeg poster warm (OPT-10) — first clip first, max 2 concurrent.
-        previewThumbnailQueue.scheduleWarmAfterImport(
-          fresh.map((v) => v.path),
-          fresh[0]?.path,
-          (path) => {
-            const v = fresh.find((x) => x.path === path);
-            if (!v) return "";
-            return `${v.size_bytes}-${v.duration_secs}-${get().getMediaRevision(path)}`;
-          },
+        // Stagger FFmpeg poster warm (OPT-10) — skip Kurzclips due for OPT-29 sweep.
+        const cfg = useConfigStore.getState().config;
+        const sweepShort = cfg?.cleanup_short_videos_after_import === true;
+        const shortMax = clampCleanupShortVideosMaxSec(
+          cfg?.cleanup_short_videos_max_sec ?? 5,
         );
+        const warmVideos = fresh.filter((v) => {
+          if (!sweepShort) return true;
+          const d = v.duration_secs;
+          if (!Number.isFinite(d) || d <= 0) return true;
+          return d > shortMax;
+        });
+        if (warmVideos.length > 0) {
+          previewThumbnailQueue.scheduleWarmAfterImport(
+            warmVideos.map((v) => v.path),
+            warmVideos[0]?.path,
+            (path) => {
+              const v = warmVideos.find((x) => x.path === path);
+              if (!v) return "";
+              return `${v.size_bytes}-${v.duration_secs}-${get().getMediaRevision(path)}`;
+            },
+          );
+        }
       }
     } catch (e) {
       set({ importing: false, importError: String(e) });

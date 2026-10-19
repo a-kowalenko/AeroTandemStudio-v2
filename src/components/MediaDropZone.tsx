@@ -48,7 +48,13 @@ import {
   pathsAddedSince,
   runAutoQrAfterImport,
   shouldAutoQrAfterImport,
+  type AutoQrScanOutcome,
 } from "../lib/autoQrScan";
+import {
+  emptyShortClipCleanup,
+  formatShortClipCleanupSummary,
+  runPostImportVideoHygiene,
+} from "../lib/shortClipCleanup";
 import {
   requestKundenIdFocus,
   requestKundenIdFocusAfterImport,
@@ -288,48 +294,35 @@ export function MediaDropZone({
           photoQrCheckEnabled: cfg?.photo_qr_check_enabled,
         });
 
+        let qrHit: AutoQrScanOutcome | null = null;
+        let shortClipCleanup = emptyShortClipCleanup();
+        const onBeforeRemoveVideo = (p: string) => onRemoveVideo?.(p);
+
         if (willAutoScan) {
           setExpanding(false);
           clearManualImportProgress();
           setQrBusy(true);
           try {
             const scanPaths = [...newVideoPaths, ...newPhotoPaths];
-            const outcome = await withQrScanProgress(scanPaths, () =>
-              runAutoQrAfterImport({
-                videoPaths: newVideoPaths,
-                photoPaths: newPhotoPaths,
-                onBeforeRemoveVideo: (p) => onRemoveVideo?.(p),
-              }),
+            const { outcome, cleanup } = await withQrScanProgress(
+              scanPaths,
+              async () => {
+                const outcome = await runAutoQrAfterImport({
+                  videoPaths: newVideoPaths,
+                  photoPaths: newPhotoPaths,
+                  onBeforeRemoveVideo,
+                });
+                const cleanup = await runPostImportVideoHygiene({
+                  newVideoPaths,
+                  qrOutcome: outcome.found ? outcome : null,
+                  onBeforeRemoveVideo,
+                });
+                return { outcome, cleanup };
+              },
             );
+            shortClipCleanup = cleanup;
             if (outcome.attempted && outcome.found) {
-              const qrActions = outcome.successOptions?.actions ?? [];
-              useSessionRunStore.getState().presentSessionRun({
-                title: outcome.successTitle ?? t("app.qr.recognized"),
-                highlight:
-                  outcome.successOptions?.highlight ||
-                  outcome.kundeName ||
-                  t("app.sd.customerRecognized"),
-                qrPreview: outcome.successOptions?.qrPreview ?? null,
-                actions: [
-                  ...qrActions,
-                  {
-                    kind: "import",
-                    label: t("app.import.label"),
-                    tone: "success",
-                    summary: t("app.import.summary", {
-                      videos: videosAdded,
-                      photos: photosAdded,
-                    }),
-                  },
-                ],
-              });
-              setStatusMsg(
-                outcome.applied
-                  ? t("media.drop.qrApplied", { parts: partsJoined })
-                  : outcome.keptExisting
-                    ? t("media.drop.keptCustomer", { parts: partsJoined })
-                    : t("media.drop.qrSuffix", { parts: partsJoined }),
-              );
+              qrHit = outcome;
             } else if (outcome.attempted && outcome.cancelled) {
               showWarning(
                 outcome.message || t("app.qr.cancelled"),
@@ -361,6 +354,50 @@ export function MediaDropZone({
           }
         } else {
           requestKundenIdFocusAfterImport({ scanned: false });
+          shortClipCleanup = await runPostImportVideoHygiene({
+            newVideoPaths,
+            qrOutcome: null,
+            onBeforeRemoveVideo,
+          });
+        }
+        const shortClipSuffix = formatShortClipCleanupSummary(shortClipCleanup);
+        const importSummary =
+          t("app.import.summary", {
+            videos: videosAdded,
+            photos: photosAdded,
+          }) + shortClipSuffix;
+
+        if (qrHit) {
+          const qrActions = qrHit.successOptions?.actions ?? [];
+          useSessionRunStore.getState().presentSessionRun({
+            title: qrHit.successTitle ?? t("app.qr.recognized"),
+            highlight:
+              qrHit.successOptions?.highlight ||
+              qrHit.kundeName ||
+              t("app.sd.customerRecognized"),
+            qrPreview: qrHit.successOptions?.qrPreview ?? null,
+            actions: [
+              ...qrActions,
+              {
+                kind: "import",
+                label: t("app.import.label"),
+                tone: "success",
+                summary: importSummary,
+              },
+            ],
+          });
+          setStatusMsg(
+            (qrHit.applied
+              ? t("media.drop.qrApplied", { parts: partsJoined })
+              : qrHit.keptExisting
+                ? t("media.drop.keptCustomer", { parts: partsJoined })
+                : t("media.drop.qrSuffix", { parts: partsJoined })) +
+              shortClipSuffix,
+          );
+        } else if (shortClipSuffix) {
+          setStatusMsg((prev) =>
+            prev ? prev + shortClipSuffix : t("media.drop.added", { parts: partsJoined }) + shortClipSuffix,
+          );
         }
       } catch (e) {
         setStatusMsg(null);

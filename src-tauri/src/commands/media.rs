@@ -364,24 +364,38 @@ fn delete_working_copy_blocking(path: String) -> working_session::DeleteWorkingC
     result
 }
 
+/// Per-path result for batch delete (same order as input).
+#[derive(serde::Serialize)]
+pub struct DeleteWorkingCopyPathResult {
+    pub path: String,
+    pub status: working_session::DeleteWorkingCopyStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 /// Batch-delete working copies on a blocking pool (clear list / clear tab).
 #[tauri::command]
-pub async fn delete_working_copies(paths: Vec<String>) -> Result<usize, String> {
+pub async fn delete_working_copies(
+    paths: Vec<String>,
+) -> Result<Vec<DeleteWorkingCopyPathResult>, String> {
     if paths.is_empty() {
-        return Ok(0);
+        return Ok(Vec::new());
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let mut deleted = 0usize;
+        let mut out = Vec::with_capacity(paths.len());
         for path in paths {
             let trimmed = path.trim();
             if trimmed.is_empty() {
                 continue;
             }
-            if working_session::delete_working_copy(trimmed).is_deleted() {
-                deleted += 1;
-            }
+            let result = working_session::delete_working_copy(trimmed);
+            out.push(DeleteWorkingCopyPathResult {
+                path: trimmed.to_string(),
+                status: result.status,
+                reason: result.reason,
+            });
         }
-        deleted
+        out
     })
     .await
     .map_err(|e| e.to_string())

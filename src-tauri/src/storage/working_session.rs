@@ -489,7 +489,7 @@ impl WorkingSession {
             return DeleteWorkingCopyResult::not_owned();
         }
 
-        const BACKOFF_MS: &[u64] = &[0, 50, 150, 400, 800];
+        const BACKOFF_MS: &[u64] = &[0, 50, 150, 400, 800, 1600, 2400];
         let mut last_err: Option<io::Error> = None;
         for &wait_ms in BACKOFF_MS {
             if wait_ms > 0 {

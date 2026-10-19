@@ -109,6 +109,7 @@ export function AppShell({
   const videoImporting = useVideoStore((s) => s.importing);
   const photoImporting = usePhotoStore((s) => s.importing);
   const loading = useUiStore((s) => s.loading);
+  const postImportHygieneActive = useUiStore((s) => s.postImportHygieneDepth > 0);
   const qrScanBusy = useQrScanStore((s) => s.busy);
 
   const uiLocked =
@@ -118,14 +119,16 @@ export function AppShell({
     loading ||
     qrScanBusy ||
     videoImporting ||
-    photoImporting;
+    photoImporting ||
+    postImportHygieneActive;
 
   const pipelineActive =
     sdWorkflowUiActive ||
     loading ||
     qrScanBusy ||
     videoImporting ||
-    photoImporting;
+    photoImporting ||
+    postImportHygieneActive;
 
   const createValidation = useCreateValidation({
     ready,

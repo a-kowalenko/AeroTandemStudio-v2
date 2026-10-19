@@ -10,6 +10,7 @@ import {
   type QrScanJobStage,
   type QrScanLegend,
   type QrScanPhase,
+  type ShortClipHygieneProgress,
 } from "../store/qrScanStore";
 
 export type WorkflowProgressSnapshot = {
@@ -97,6 +98,7 @@ export function resolveSdWorkflowProgress(opts: {
   qrLookup?: QrLookupUi | null;
   /** Photo neighbor follow-up has taken over the stripe list. */
   qrNeighborFollowup?: boolean;
+  qrShortClipHygiene?: ShortClipHygieneProgress | null;
 }): WorkflowProgressSnapshot | null {
   if (!opts.active) return null;
 
@@ -175,6 +177,7 @@ export function resolveSdWorkflowProgress(opts: {
       opts.qrVideoEdgeLimited,
       opts.qrLookup ?? null,
       Boolean(opts.qrNeighborFollowup),
+      opts.qrShortClipHygiene ?? null,
     );
     return {
       percent: summary.percent,
@@ -182,7 +185,8 @@ export function resolveSdWorkflowProgress(opts: {
         msg &&
         !/^QR-Scan…?$/i.test(msg) &&
         !/^QR-Code/i.test(msg) &&
-        opts.qrStage !== "followup"
+        opts.qrStage !== "followup" &&
+        opts.qrStage !== "short_clip_hygiene"
           ? msg
           : summary.label,
       detail: summary.detail || undefined,

@@ -137,6 +137,9 @@ export type AppConfig = {
   qr_remove_photo_after_scan: boolean;
   qr_remove_video_after_scan: boolean;
   qr_remove_video_max_duration_sec: number;
+  /** OPT-29: remove short newly imported clips from session after import (+ QR). */
+  cleanup_short_videos_after_import: boolean;
+  cleanup_short_videos_max_sec: number;
   sd_auto_backup: boolean;
   sd_backup_folder: string;
   /** Optional SMB mirror of local SD backups. */
@@ -812,10 +815,20 @@ export async function deleteWorkingCopy(path: string): Promise<DeleteWorkingCopy
   return invoke<DeleteWorkingCopyResult>("delete_working_copy", { path });
 }
 
+export type DeleteWorkingCopyPathResult = {
+  path: string;
+  status: DeleteWorkingCopyStatus;
+  reason?: string;
+};
+
 /** Batch-delete working copies (blocking pool; keeps UI responsive). */
-export async function deleteWorkingCopies(paths: string[]): Promise<number> {
-  if (paths.length === 0) return 0;
-  return invoke<number>("delete_working_copies", { paths });
+export async function deleteWorkingCopies(
+  paths: string[],
+): Promise<DeleteWorkingCopyPathResult[]> {
+  if (paths.length === 0) return [];
+  return invoke<DeleteWorkingCopyPathResult[]>("delete_working_copies", {
+    paths,
+  });
 }
 
 /** Loopback HTTP URL for HTML5 video playback (Range-capable). */

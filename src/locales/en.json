@@ -61,6 +61,26 @@
       "photos": "Photos",
       "themeLight": "Light",
       "themeDark": "Dark",
+      "language": "Language",
+      "storageLocation": "Storage location",
+      "dropzonePlaceholder": "Drop zone…",
+      "actions": "Actions",
+      "all": "All",
+      "date": "Date",
+      "drive": "Drive {{name}}",
+      "filesCount": "{{count}} files",
+      "filesCountWithSize": "{{count}} files · {{sizeMb}} MB",
+      "name": "Name",
+      "no": "no",
+      "none": "None",
+      "preview": "Preview",
+      "sdCard": "SD card",
+      "selectedSummary": "selected: {{count}} ({{sizeMb}} MB)",
+      "size": "Size",
+      "sortAsc": "↑ Asc",
+      "sortDesc": "↓ Desc",
+      "type": "Type",
+      "yes": "yes",
       "themeTeamSpirit": "Dark Spirit",
       "themeDeutschland": "Germany",
       "themeDeutschlandDark": "Germany Night",
@@ -86,27 +106,7 @@
       "themePrussianDay": "Prussian Day",
       "themePrussianNight": "Prussian Night",
       "themeFsz": "FSZ Dark",
-      "themeFszLight": "FSZ Light",
-      "language": "Language",
-      "storageLocation": "Storage location",
-      "dropzonePlaceholder": "Drop zone…",
-      "actions": "Actions",
-      "all": "All",
-      "date": "Date",
-      "drive": "Drive {{name}}",
-      "filesCount": "{{count}} files",
-      "filesCountWithSize": "{{count}} files · {{sizeMb}} MB",
-      "name": "Name",
-      "no": "no",
-      "none": "None",
-      "preview": "Preview",
-      "sdCard": "SD card",
-      "selectedSummary": "selected: {{count}} ({{sizeMb}} MB)",
-      "size": "Size",
-      "sortAsc": "↑ Asc",
-      "sortDesc": "↓ Desc",
-      "type": "Type",
-      "yes": "yes"
+      "themeFszLight": "FSZ Light"
     },
     "language": {
       "de": "German",
@@ -135,11 +135,11 @@
     },
     "areas": {
       "workplace": "Personal",
-      "appearance": "Appearance",
       "media": "Media",
       "connection": "Connection",
       "output": "Output",
-      "maintenance": "Maintenance"
+      "maintenance": "Maintenance",
+      "appearance": "Appearance"
     },
     "complexity": {
       "simple": "Simple",
@@ -152,7 +152,7 @@
     "general": {
       "appearance": {
         "title": "Appearance",
-        "description": "Interface design (light, dark, or specialty).",
+        "description": "Light or dark mode for the interface.",
         "quickAccessHint": "You can also change themes from the palette icon next to Settings in the header — the main app stays visible.",
         "groups": {
           "base": "Basics",
@@ -430,7 +430,11 @@
         "removePhotoHint": "Neighbor photos of the same series (≤10s apart) are checked in both directions; stop after 3 photos without QR per direction.",
         "removeVideo": "Remove QR video clip after successful analysis",
         "maxDuration": "Max. clip length for deletion (sec.)",
-        "maxDurationHint": "Only clips of this length or shorter are removed (default: 10s)."
+        "maxDurationHint": "Only clips of this length or shorter are removed (default: 10s).",
+        "cleanupShortVideos": "Remove short videos from session after import",
+        "cleanupShortVideosHint": "After import and optional QR scan: remove new clips ≤ threshold from working folder and list — SD backup unchanged. QR hits and unknown duration are kept.",
+        "cleanupShortMaxSec": "Max. short-clip length (sec.)",
+        "cleanupShortMaxSecHint": "Only newly imported clips of this length or shorter (default: 5 s)."
       }
     },
     "sd": {
@@ -537,11 +541,6 @@
         "backupUrlHint": "Second SMB target for this profile — no failover, just an extra share.",
         "backupUrlPlaceholder": "smb://…/backup"
       },
-      "diagnostics": {
-        "title": "Diagnostics",
-        "switch": "Send error reports",
-        "description": "Error messages and technical data only (e.g. this PC’s name). No media or customer data."
-      },
       "upload": {
         "title": "Upload",
         "afterCreate": "Upload to server after creation",
@@ -590,6 +589,11 @@
         "suggestBackupLine": " · Backup: {{url}}",
         "suggestBody": "Primary: {{primary}}{{backup}}",
         "suggestTitle": "SMB paths from booking lookup"
+      },
+      "diagnostics": {
+        "title": "Diagnostics",
+        "switch": "Send error reports",
+        "description": "Error messages and technical data only (e.g. this PC’s name). No media or customer data."
       }
     },
     "save": {
@@ -1213,7 +1217,9 @@
     "import": {
       "label": "Import",
       "summary": "{{videos}} videos, {{photos}} photos",
-      "skipped": " · {{count}} skipped"
+      "skipped": " · {{count}} skipped",
+      "shortClipRemoved": "{{count}} short video removed (≤ {{maxSec}} s)",
+      "shortClipRemovedMany": "{{count}} short videos removed (≤ {{maxSec}} s)"
     },
     "qr": {
       "label": "QR code",
@@ -1263,6 +1269,7 @@
       "bgFailMessage": "{{detail}} Retry from Jobs.",
       "bgFailHint": "Please retry from Jobs.",
       "bgCancelled": "Upload cancelled — can retry in Jobs.",
+      "titleLater": "Upload · later",
       "remoteMarkedDone": "Marked as done — the folder is already on the server.",
       "remoteReplaced": "Server folder replaced and uploaded.",
       "remoteHandoffFailed": "Marked as done. The cloud handoff could not be started — check the status later under Jobs."
@@ -1281,8 +1288,8 @@
     },
     "media": {
       "kindAria": "Media type",
-      "clearVideos": "Clear all videos",
-      "clearPhotos": "Clear all photos",
+      "clearVideos": "Clear videos",
+      "clearPhotos": "Clear photos",
       "clearingVideos": "Clearing…",
       "clearingPhotos": "Clearing…",
       "clearedVideos": "Videos cleared",
@@ -1646,20 +1653,6 @@
     "appendTitleWait": "Only after upload has finished",
     "appendTitleBusy": "An append is already running",
     "appendTitleOk": "Add more media to the same customer folder",
-    "sdBackups": {
-      "title": "SD backups",
-      "loading": "SD backups…",
-      "openFolder": "Open folder",
-      "server": "Server backup",
-      "copyRemotePath": "Copy server path",
-      "pathCopied": "Path copied to clipboard.",
-      "remotePathHint": "No direct access from the app — copy the path and open your configured server backup share.",
-      "renamedLocal": "Renamed (local)",
-      "renamedRemote": "Renamed (server)",
-      "originalName": "Originally: {{name}}",
-      "remoteRenameFailed": "Server rename failed: {{error}}",
-      "folderMissingHint": "SD backup folder was removed or moved."
-    },
     "files": "Files",
     "appended": "Appended",
     "appendedFolder": "Append {{folder}}",
@@ -1811,6 +1804,20 @@
     },
     "appendTitleCloudOffline": "No server connection — append to the cloud once connected",
     "appendTitleUploadOff": "Cloud upload is disabled — enable it in settings to append media",
+    "sdBackups": {
+      "title": "SD backups",
+      "loading": "SD backups…",
+      "openFolder": "Open folder",
+      "server": "Server backup",
+      "copyRemotePath": "Copy server path",
+      "pathCopied": "Path copied to clipboard.",
+      "remotePathHint": "No direct access from the app — copy the path and open your configured server backup share.",
+      "renamedLocal": "Renamed (local)",
+      "renamedRemote": "Renamed (server)",
+      "originalName": "Originally: {{name}}",
+      "remoteRenameFailed": "Server rename failed: {{error}}",
+      "folderMissingHint": "SD backup folder was removed or moved."
+    },
     "jobs": {
       "pageSize": "{{count}} / page",
       "pageSizeAria": "Entries per page",
@@ -2019,6 +2026,7 @@
       "readingVideo": "Reading video for QR search…",
       "removingQrPhotos": "Removing QR photos from list…",
       "removingQrVideo": "Removing QR clip from the list…",
+      "removingShortClips": "Removing short clips…",
       "scanGeneric": "Searching for QR code…",
       "scanPhotos": "Searching for QR code in photos…",
       "scanVideos": "Searching for QR code in videos…",
@@ -2086,7 +2094,7 @@
       "success": {
         "trim": "Trim applied. Undo from the clip or Undo all edits.",
         "split": "Video split. Undo from a part clip or Undo all edits.",
-        "rotate": "Rotation saved — applied when creating. Undo from the clip or Undo all edits.",
+        "rotate": "Rotation applied. Undo from the clip or Undo all edits.",
         "undoOne": "Edit for this clip undone.",
         "undoAll": "Undid {{count}} edit(s)."
       },
@@ -2427,8 +2435,8 @@
       "secondaryBackupTitle": "Server backup",
       "secondaryBackupCancelledTitle": "Server backup cancelled",
       "secondaryBackupCancelledBody": "Local backup remains. Remote folder may be incomplete.",
-      "remoteRenameFailedTitle": "Server backup rename",
-      "title": "SD monitor"
+      "title": "SD monitor",
+      "remoteRenameFailedTitle": "Server backup rename"
     },
     "tile": {
       "fullscreenNamed": "{{name}} fullscreen",
@@ -2475,7 +2483,7 @@
       "sd": "Backup, clear/eject, auto-import, and limits are optional and can be changed later.",
       "qr": "QR scan options can be configured later in settings.",
       "server": "Server access can be configured later.",
-      "workplace": "You can change drop zone and operator later at any time.",
+      "workplace": "You can change appearance, drop zone, and operator later at any time.",
       "media": "Backup, import, eject, and QR scan are optional and can be changed later.",
       "output": "Output settings are optional — defaults stay if you skip.",
       "import": "Backup, import, eject, and QR scan are optional and can be changed later."
@@ -2514,40 +2522,30 @@
       "serverMissing": "— server missing —",
       "storageMissingHint": "Without a storage location, jobs cannot be saved. You can set it later in settings."
     },
-    "finish": "Get started",
+    "finish": "Finish setup",
     "skipAll": "Skip entire setup",
     "complete": "Setup completed.",
     "completeTitle": "Success",
-    "celebration": {
-      "eyebrow": "Done",
-      "title": "You're all set",
-      "headline": "Setup complete",
-      "body": "You can create jobs and process media now.",
-      "toApp": "Go to app",
-      "progressAria": "Setup complete",
-      "serverConnected": "Server connected",
-      "serverLater": "Server later"
-    },
     "import": {
       "backupHint": "Imports the card through the recommended workflow using a local copy.",
       "qrHint": "QR files stay in place by default. Scan duration and cleanup are under More options.",
       "backupPcNameHint": "Backup folders are labeled with “{{name}}”."
     },
     "intro": {
-      "appearance": "Choose the look of the app. You can change it later in settings at any time.",
+      "appearance": "Welcome to Aero Tandem Studio. Set appearance, drop zone, and operator. Everything else can be adjusted later in settings.",
       "import": "Set the import defaults here: backup, clear, import, and eject. QR cleanup and further details can be adjusted later in settings.",
       "storage": "Completed jobs are saved to the storage location.",
       "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later.",
-      "workplace": "Drop zone and your name. Everything else can be adjusted later in settings.",
-      "workplaceSimple": "Drop zone and your name. Storage folders and media use the defaults.",
+      "workplaceSimple": "Appearance, drop zone, and your name. Storage folders and media use the defaults.",
       "connectionSimple": "We search for the server on the network. Enter the token and connect — you can change this later.",
+      "mode": "How should setup run? You can change the mode later in settings.",
+      "media": "Set backup, auto-import, eject, and QR scan. USB, size warning, and QR details are under More options.",
+      "output": "Codec, strategy, and hardware acceleration. Intro and concat are under more options.",
+      "workplace": "Drop zone and your name. Everything else can be adjusted later in settings.",
       "connectionNetworkTitle": "Make sure you're connected",
       "connectionWifi": "Wi‑Fi",
       "connectionCable": "Cable",
-      "connectionConnected": "Connected",
-      "mode": "How should setup run? You can change the mode later in settings.",
-      "media": "Set backup, auto-import, eject, and QR scan. USB, size warning, and QR details are under More options.",
-      "output": "Codec, strategy, and hardware acceleration. Intro and concat are under more options."
+      "connectionConnected": "Connected"
     },
     "mode": {
       "simpleTitle": "Simple",
@@ -2571,7 +2569,7 @@
     },
     "standardFolderTitle": "Default folder",
     "steps": {
-      "appearance": "Appearance",
+      "appearance": "Welcome",
       "mode": "Setup mode",
       "workplace": "Personal",
       "storage": "Storage",
@@ -2587,13 +2585,12 @@
       "amsHint": "We search automatically for the booking bridge. You can apply discovered paths, or set up the server manually.",
       "amsHintSimple": "Tap a found server, enter the token, connect.",
       "connectedSimple": "Connected. You can continue.",
-      "noneFoundSimple": "No server found. Search again, or skip this step.",
-      "noneFoundWifiOnly": "Wi‑Fi is connected, but the server is not. That is often the internet Wi‑Fi. A cable is the most reliable.",
+      "noneFoundSimple": "No server found. Search again or skip this step — you can connect later in settings.",
       "connectAndApply": "Connect to server",
       "connectRequired": "Please connect to the server first.",
       "connectedNoPaths": "AMS connected — no path suggestions. Enter the server manually.",
       "manualHint": "Pick a default profile or enter SMB address and credentials.",
-      "noneFound": "No bridge found. Search again, or set it up manually.",
+      "noneFound": "No bridge found. Search again or set up the server manually.",
       "optionalNote": "Recommended when AMS or SMB is available on the network — change anytime in settings.",
       "secondPathHint": "Extra copy of the local backup to the server. The target URL is in the server profile.",
       "pathsApplied": "Paths applied: {{primary}}",
@@ -2609,7 +2606,8 @@
       "skipAms": "Continue without server",
       "tokenHint": "Often the same password as for the SMB server.",
       "tokenPlaceholder": "Token / key",
-      "tokenRequired": "Please enter the AMS token or key."
+      "tokenRequired": "Please enter the AMS token or key.",
+      "noneFoundWifiOnly": "Wi‑Fi is connected, but the server is not. That is often the internet Wi‑Fi. A cable is the most reliable."
     },
     "defaultMediaDir": {
       "alternateChoice": "Alternative: {{path}}",
@@ -2620,7 +2618,17 @@
       "proceedAnyway": "Continue anyway?",
       "warningsTitle": "Storage location notes:"
     },
-    "operatorRequired": "Please set who you are."
+    "operatorRequired": "Please set who you are.",
+    "celebration": {
+      "eyebrow": "Done",
+      "title": "You're all set",
+      "headline": "Setup complete",
+      "body": "You can create jobs and process media now.",
+      "toApp": "Go to app",
+      "progressAria": "Setup complete",
+      "serverConnected": "Server connected",
+      "serverLater": "Server later"
+    }
   },
   "dateField": {
     "chooseDateAria": "Choose date",

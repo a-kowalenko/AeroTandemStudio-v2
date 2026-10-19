@@ -22,6 +22,7 @@
 | `@docs/opt/open/26-rotation-export.md` | OPT-26 (Drehung: Freeze-Fix + Rotation beim Export; ein Slice pro Session) |
 | `@docs/opt/open/27-auto-orientation-harmonize.md` | OPT-27 (Auto-Concat: Orientierung harmonisieren; Slice 0 zuerst) |
 | `@docs/opt/open/28-thumb-delete-stability.md` | OPT-28 (Video-Thumbs Kurzclip + QR-Delete; Teil A/B getrennt) |
+| `@docs/opt/open/29-short-clip-cleanup-after-import.md` | OPT-29 (Kurzclips nach Import+QR; Session only) |
 | `@docs/optimization_plan.md` | Index / Tracker (optional) |
 | `@docs/opt/ARCHIVE.md` | Regression / erledigte OPT-Spec (gezielt, nicht ganz) |
 | `@docs/PERF_BASELINE.md` | OPT-0 Messungen / Vorher-Nachher |
@@ -37,6 +38,7 @@
 | — | **26A–D** Freeze-Fix + Drehung als Edit-Wert, Rotation im Export (manuell iPhone/QuickTime offen) | [`opt/open/26-rotation-export.md`](opt/open/26-rotation-export.md) | ✅ Code |
 | — | **25** SD-Import History-Progress + Hash-Reuse | [`opt/open/25-sd-import-history-progress.md`](opt/open/25-sd-import-history-progress.md) | ✅ A–C (Code) |
 | — | **28** Thumbs Kurzclip + QR-Delete-Stabilität (A+B Code ✅; manuell) | [`opt/open/28-thumb-delete-stability.md`](opt/open/28-thumb-delete-stability.md) | ✅ Code |
+| 1 | **29** Kurzclip-Bereinigung nach Import+QR (Default 5 s, an) | [`opt/open/29-short-clip-cleanup-after-import.md`](opt/open/29-short-clip-cleanup-after-import.md) | ⬜ offen |
 | 2 | **27** Auto-Concat Orientierung (Slice 0–D ✅ Code; **E manuell**) | [`opt/open/27-auto-orientation-harmonize.md`](opt/open/27-auto-orientation-harmonize.md) | 🔄 Slice D ✅ |
 | 3 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
 | — | **24** Kaltstart + UI-Responsiveness (A–F Code ✅) | [`opt/open/24-startup-ui-responsiveness.md`](opt/open/24-startup-ui-responsiveness.md) | ✅ Code |
@@ -80,6 +82,7 @@
 | OPT-26 | Video-Drehung: Freeze-Fix + Rotation erst beim Export | hoch | S (A) / L (B–D) | niedrig / mittel | Phase 43, 49, OPT-16 | [open/26](opt/open/26-rotation-export.md) |
 | OPT-27 | Auto-Concat: Orientierung harmonisieren (Copy / Partial Bake) | hoch | S (0) / M (A–D) | mittel | Phase 40, OPT-16, OPT-26 | [open/27](opt/open/27-auto-orientation-harmonize.md) |
 | OPT-28 | Video-Thumbs (Kurzclip) + QR-Arbeitskopie-Löschen | mittel | S–M (A/B) | niedrig | OPT-10 | [open/28](opt/open/28-thumb-delete-stability.md) |
+| OPT-29 | Kurzclip-Bereinigung nach Import (+ QR), Backup voll | mittel | S (0+A+B) | niedrig | OPT-28 | [open/29](opt/open/29-short-clip-cleanup-after-import.md) |
 
 ---
 
@@ -127,6 +130,8 @@ Details: `@AGENTS.md` · Abgelehnte Themen: `@docs/opt/OUT_OF_SCOPE.md`
 | OPT-25 | ✅ Slice A–C (Code) | [open/25-sd-import-history-progress.md](opt/open/25-sd-import-history-progress.md) |
 | OPT-26 | ✅ Slice A–F (Code); manuell iPhone/QuickTime offen | [open/26-rotation-export.md](opt/open/26-rotation-export.md) |
 | OPT-27 | 🔄 Slice 0–D ✅ (Code); E manuell offen | [open/27-auto-orientation-harmonize.md](opt/open/27-auto-orientation-harmonize.md) |
+| OPT-28 | ✅ Teil A+B (Code); manuell offen | [open/28-thumb-delete-stability.md](opt/open/28-thumb-delete-stability.md) |
+| OPT-29 | ⬜ Slice 0–C offen | [open/29-short-clip-cleanup-after-import.md](opt/open/29-short-clip-cleanup-after-import.md) |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -173,6 +178,14 @@ Implementiere OPT-27 Slice A aus @docs/opt/open/27-auto-orientation-harmonize.md
 Regeln: @AGENTS.md
 Nur Slice A. Danach cargo test --manifest-path src-tauri/Cargo.toml.
 ```
+
+```
+Implementiere OPT-29 Slice 0 aus @docs/opt/open/29-short-clip-cleanup-after-import.md
+Regeln: @AGENTS.md
+Nur Slice 0. Danach npm run check.
+```
+
+**Weitere Slices:** A (Pipeline), B (UI), C (manuell) in derselben Spec.
 
 ```
 Implementiere OPT-23 Slice A aus @docs/opt/open/23-smb-stability.md
