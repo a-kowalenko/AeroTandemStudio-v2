@@ -2,12 +2,16 @@
 //! Disk-cached under `{app_config}/thumbnails/` keyed by path+mtime+size+quality.
 
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::{BufReader, Cursor};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use once_cell::sync::Lazy;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use exif::{get_exif_attr_from_jpeg, In, Reader as ExifReader, Tag};
@@ -35,7 +39,16 @@ const THUMB_PREVIEW_JPEG_Q: u8 = 82;
 const MIN_EMBEDDED_THUMB_EDGE: u32 = 24;
 /// Bump when generated pixels change for unchanged sources (cache key is path+mtime+size).
 /// `o1`: EXIF Orientation baked into full-decode photo thumbs.
-const THUMB_CACHE_REV: &str = "o1";
+/// `o2`: OPT-28 duration-aware video frame seek.
+const THUMB_CACHE_REV: &str = "o2";
+
+/// Clips shorter than this use t=0 seeks (GoPro sub-second HEVC).
+pub(crate) const SHORT_CLIP_DURATION_SECS: f64 = 1.0;
+
+type ThumbGenResult = Result<CachedThumbnail, ThumbnailError>;
+
+static THUMB_IN_FLIGHT: Lazy<Mutex<HashMap<String, Arc<(Mutex<Option<ThumbGenResult>>, Condvar)>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThumbQuality {
@@ -211,6 +224,74 @@ pub fn generate_thumbnail_cached_with_ffmpeg(
         return Ok(cached);
     }
 
+    let flight_key = thumb_inflight_key(path, quality);
+    let (shared, is_leader) = {
+        let mut guard = THUMB_IN_FLIGHT.lock().map_err(|e| {
+            ThumbnailError::Message(format!("thumb in-flight lock: {e}"))
+        })?;
+        if let Some(existing) = guard.get(&flight_key) {
+            (existing.clone(), false)
+        } else {
+            let slot = Arc::new((Mutex::new(None), Condvar::new()));
+            guard.insert(flight_key.clone(), slot.clone());
+            (slot, true)
+        }
+    };
+
+    let (lock, cv) = &*shared;
+    let mut slot = lock
+        .lock()
+        .map_err(|e| ThumbnailError::Message(e.to_string()))?;
+    if let Some(done) = slot.as_ref() {
+        return clone_thumb_result(done);
+    }
+    if is_leader {
+        let ffmpeg_owned = ffmpeg.map(|p| p.to_path_buf());
+        let path_owned = path.to_path_buf();
+        let result = generate_thumbnail_cached_with_ffmpeg_leader(
+            &path_owned,
+            quality,
+            ffmpeg_owned.as_deref(),
+        );
+        *slot = Some(clone_thumb_result(&result));
+        cv.notify_all();
+        drop(slot);
+        if let Ok(mut guard) = THUMB_IN_FLIGHT.lock() {
+            guard.remove(&flight_key);
+        }
+        return result;
+    }
+    while slot.is_none() {
+        slot = cv
+            .wait(slot)
+            .map_err(|e| ThumbnailError::Message(e.to_string()))?;
+    }
+    clone_thumb_result(slot.as_ref().unwrap())
+}
+
+fn thumb_inflight_key(path: &Path, quality: ThumbQuality) -> String {
+    format!(
+        "{}:{}",
+        quality.as_str(),
+        path.to_string_lossy().replace('/', "\\").to_ascii_lowercase()
+    )
+}
+
+fn clone_thumb_result(r: &ThumbGenResult) -> ThumbGenResult {
+    match r {
+        Ok(c) => Ok(CachedThumbnail {
+            bytes: c.bytes.clone(),
+            cache_path: c.cache_path.clone(),
+        }),
+        Err(e) => Err(ThumbnailError::Message(e.to_string())),
+    }
+}
+
+fn generate_thumbnail_cached_with_ffmpeg_leader(
+    path: &Path,
+    quality: ThumbQuality,
+    ffmpeg: Option<&Path>,
+) -> Result<CachedThumbnail, ThumbnailError> {
     let (mtime, size) = file_identity(path)?;
     let jpeg = generate_thumbnail_bytes(path, quality, ffmpeg)?;
     let cache_path = if let Ok(dir) = thumbnails_dir() {
@@ -296,6 +377,75 @@ fn resize_squareish(img: &DynamicImage, max_size: u32) -> DynamicImage {
     img.thumbnail(max_size, max_size)
 }
 
+/// True when the probe duration is a positive clip shorter than [`SHORT_CLIP_DURATION_SECS`].
+pub(crate) fn is_short_clip_duration(duration_secs: Option<f64>) -> bool {
+    duration_secs
+        .filter(|d| d.is_finite() && *d > 0.0)
+        .is_some_and(|d| d < SHORT_CLIP_DURATION_SECS)
+}
+
+/// Primary seek (seconds) before `-i` for the first extraction attempt.
+pub(crate) fn seek_seconds_for_duration(duration_secs: Option<f64>) -> f64 {
+    if is_short_clip_duration(duration_secs) {
+        0.0
+    } else {
+        match duration_secs.filter(|d| d.is_finite() && *d > 0.0) {
+            None => 0.5,
+            Some(d) => (d * 0.1).clamp(0.05, 0.5),
+        }
+    }
+}
+
+fn format_seek_secs(secs: f64) -> String {
+    if secs <= 0.0 {
+        "0".into()
+    } else {
+        format!("{secs:.3}")
+    }
+}
+
+/// `(seek before -i, seek after -i, use scale filter)`.
+fn video_thumb_seek_strategies(duration_secs: Option<f64>) -> Vec<(Option<f64>, Option<f64>, bool)> {
+    if is_short_clip_duration(duration_secs) {
+        vec![
+            (Some(0.0), None, true),
+            (None, Some(0.0), true),
+            (None, None, true),
+            (None, None, false),
+        ]
+    } else {
+        let primary = seek_seconds_for_duration(duration_secs);
+        vec![
+            (Some(primary), None, true),
+            (Some(0.5), None, true),
+            (None, Some(0.1), true),
+            (None, Some(0.0), true),
+            (None, None, false),
+        ]
+    }
+}
+
+fn probe_video_duration_for_thumb(ffmpeg: &Path, path: &Path) -> Option<f64> {
+    let input = path.to_string_lossy();
+    let stderr = crate::video::ffmpeg::ffmpeg_probe_stderr(ffmpeg, input.as_ref()).ok()?;
+    crate::video::progress::parse_duration(&stderr)
+}
+
+fn read_extracted_thumb_jpeg(out_path: &Path) -> Result<DynamicImage, ThumbnailError> {
+    let meta = fs::metadata(out_path).map_err(|_| {
+        ThumbnailError::Message("FFmpeg finished but thumbnail file is missing".into())
+    })?;
+    if meta.len() == 0 {
+        let _ = fs::remove_file(out_path);
+        return Err(ThumbnailError::Message(
+            "FFmpeg wrote an empty thumbnail file".into(),
+        ));
+    }
+    let img = image::open(out_path)?;
+    let _ = fs::remove_file(out_path);
+    Ok(img)
+}
+
 fn extract_video_frame_with_ffmpeg(
     path: &Path,
     quality: ThumbQuality,
@@ -317,70 +467,70 @@ fn extract_video_frame_with_ffmpeg(
     let qv = quality.ffmpeg_qv();
     let out_str = out_path.to_string_lossy().into_owned();
     let in_str = path.to_string_lossy().into_owned();
+    let duration = probe_video_duration_for_thumb(ffmpeg, path);
+    let strategies = video_thumb_seek_strategies(duration);
 
-    let run =
-        |seek_before_input: bool, use_scale: bool| -> Result<(bool, String), ThumbnailError> {
-            let mut cmd = Command::new(ffmpeg);
-            cmd.arg("-nostdin")
-                .arg("-y")
-                .arg("-hide_banner")
-                .arg("-loglevel")
-                .arg("error");
-            if seek_before_input {
-                cmd.args(["-ss", "0.5"]);
+    let run = |seek_before: Option<f64>, seek_after: Option<f64>, use_scale: bool| {
+        let mut cmd = Command::new(ffmpeg);
+        cmd.arg("-nostdin")
+            .arg("-y")
+            .arg("-hide_banner")
+            .arg("-loglevel")
+            .arg("error");
+        if let Some(secs) = seek_before {
+            cmd.args(["-ss", &format_seek_secs(secs)]);
+        }
+        cmd.arg("-i").arg(&in_str);
+        if let Some(secs) = seek_after {
+            cmd.args(["-ss", &format_seek_secs(secs)]);
+        }
+        cmd.args(["-an", "-frames:v", "1"]);
+        if use_scale {
+            cmd.args(["-vf", &scale]);
+        }
+        cmd.args(["-q:v", qv, "-threads", "1", "-update", "1", &out_str])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        apply_ffmpeg_spawn_defaults(&mut cmd);
+        cmd.output().map_err(ThumbnailError::Io)
+    };
+
+    let mut last_detail = String::new();
+    for (seek_before, seek_after, use_scale) in strategies {
+        let _ = fs::remove_file(&out_path);
+        let output = match run(seek_before, seek_after, use_scale) {
+            Ok(o) => o,
+            Err(e) => {
+                last_detail = e.to_string();
+                continue;
             }
-            cmd.arg("-i").arg(&in_str);
-            if !seek_before_input {
-                cmd.args(["-ss", "0.1"]);
-            }
-            cmd.args(["-an", "-frames:v", "1"]);
-            if use_scale {
-                cmd.args(["-vf", &scale]);
-            }
-            cmd.args(["-q:v", qv, "-threads", "1", "-update", "1", &out_str])
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::piped());
-            apply_ffmpeg_spawn_defaults(&mut cmd);
-            let output = cmd.output().map_err(ThumbnailError::Io)?;
-            let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            Ok((output.status.success(), err))
         };
-
-    let (ok, err1) = run(true, true)?;
-    if !ok {
-        let (ok2, err2) = run(false, true)?;
-        if !ok2 {
-            let (ok3, err3) = run(false, false)?;
-            if !ok3 {
-                let _ = fs::remove_file(&out_path);
-                let detail = [err1, err2, err3]
-                    .into_iter()
-                    .find(|s| !s.is_empty())
-                    .unwrap_or_else(|| "unknown ffmpeg error".into());
-                return Err(ThumbnailError::Message(format!(
-                    "FFmpeg could not extract video frame ({in_str}): {detail}"
-                )));
+        if !output.status.success() {
+            last_detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            continue;
+        }
+        match read_extracted_thumb_jpeg(&out_path) {
+            Ok(img) => {
+                let _ = FilterType::Lanczos3;
+                let _ = ImageFormat::Jpeg;
+                return Ok(img);
+            }
+            Err(e) => {
+                last_detail = e.to_string();
             }
         }
     }
 
-    let meta = fs::metadata(&out_path).map_err(|_| {
-        ThumbnailError::Message("FFmpeg finished but thumbnail file is missing".into())
-    })?;
-    if meta.len() == 0 {
-        let _ = fs::remove_file(&out_path);
-        return Err(ThumbnailError::Message(
-            "FFmpeg wrote an empty thumbnail file".into(),
-        ));
-    }
-
-    let img_result = image::open(&out_path);
     let _ = fs::remove_file(&out_path);
-    let img = img_result?;
-    let _ = FilterType::Lanczos3;
-    let _ = ImageFormat::Jpeg;
-    Ok(img)
+    let detail = if last_detail.is_empty() {
+        "unknown ffmpeg error".into()
+    } else {
+        last_detail
+    };
+    Err(ThumbnailError::Message(format!(
+        "FFmpeg could not extract video frame ({in_str}): {detail}"
+    )))
 }
 
 #[cfg(test)]
@@ -390,6 +540,22 @@ mod tests {
     use exif::{Field, In, Tag, Value};
     use image::{Rgb, RgbImage};
     use tempfile::tempdir;
+
+    #[test]
+    fn seek_seconds_for_duration_short_and_long() {
+        assert!((seek_seconds_for_duration(Some(0.36)) - 0.0).abs() < f64::EPSILON);
+        assert!((seek_seconds_for_duration(None) - 0.5).abs() < f64::EPSILON);
+        assert!((seek_seconds_for_duration(Some(0.0)) - 0.5).abs() < f64::EPSILON);
+        assert!((seek_seconds_for_duration(Some(2.0)) - 0.2).abs() < f64::EPSILON);
+        assert!((seek_seconds_for_duration(Some(10.0)) - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn is_short_clip_duration_boundary() {
+        assert!(is_short_clip_duration(Some(0.36)));
+        assert!(!is_short_clip_duration(Some(1.0)));
+        assert!(!is_short_clip_duration(None));
+    }
 
     #[test]
     fn thumb_quality_parse_preview() {

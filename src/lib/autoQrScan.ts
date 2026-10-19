@@ -186,8 +186,8 @@ export async function runAutoQrAfterImport(
         sourcePath: result.source_path,
         preview: result.preview,
         showDialog: false,
-        runCleanup: () => {
-          const cleanup = maybeRemoveQrVideo(result.source_path, {
+        runCleanup: async () => {
+          const cleanup = await maybeRemoveQrVideo(result.source_path, {
             onBeforeRemove: input.onBeforeRemoveVideo,
           });
           if (cleanup.removedVideos.length > 0) {

@@ -375,6 +375,36 @@ class PreviewThumbnailQueue {
     for (const listener of this.listeners) listener();
   }
 
+  /** Wait until no preview/poster FFmpeg job is queued or running for `path`. */
+  async awaitIdleForPath(path: string, timeoutMs = 5000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (!this.isPathThumbBusy(path)) return;
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 50);
+      });
+    }
+  }
+
+  private isPathThumbBusy(path: string): boolean {
+    const want = pathKey(path);
+    for (const key of this.inFlight) {
+      if (pathKey(pathFromMemKey(key)) === want) return true;
+    }
+    for (const key of this.pending.keys()) {
+      if (pathKey(pathFromMemKey(key)) === want) return true;
+    }
+    for (const adopt of this.adopts) {
+      if (
+        pathKey(adopt.fromPath) === want ||
+        pathKey(adopt.toPath) === want
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Request a thumb; dedupes in-flight work and serves memory cache.
    * `background` jobs stay serialized and wait until foreground posters finish,

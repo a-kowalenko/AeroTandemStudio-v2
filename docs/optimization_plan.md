@@ -21,6 +21,7 @@
 | `@docs/opt/open/25-sd-import-history-progress.md` | OPT-25 (SD-Import History-Progress + Hash-Reuse) |
 | `@docs/opt/open/26-rotation-export.md` | OPT-26 (Drehung: Freeze-Fix + Rotation beim Export; ein Slice pro Session) |
 | `@docs/opt/open/27-auto-orientation-harmonize.md` | OPT-27 (Auto-Concat: Orientierung harmonisieren; Slice 0 zuerst) |
+| `@docs/opt/open/28-thumb-delete-stability.md` | OPT-28 (Video-Thumbs Kurzclip + QR-Delete; Teil A/B getrennt) |
 | `@docs/optimization_plan.md` | Index / Tracker (optional) |
 | `@docs/opt/ARCHIVE.md` | Regression / erledigte OPT-Spec (gezielt, nicht ganz) |
 | `@docs/PERF_BASELINE.md` | OPT-0 Messungen / Vorher-Nachher |
@@ -35,8 +36,9 @@
 |-----------|-----|------|--------|
 | — | **26A–D** Freeze-Fix + Drehung als Edit-Wert, Rotation im Export (manuell iPhone/QuickTime offen) | [`opt/open/26-rotation-export.md`](opt/open/26-rotation-export.md) | ✅ Code |
 | — | **25** SD-Import History-Progress + Hash-Reuse | [`opt/open/25-sd-import-history-progress.md`](opt/open/25-sd-import-history-progress.md) | ✅ A–C (Code) |
-| 1 | **27** Auto-Concat Orientierung (Slice 0–D ✅ Code; **E manuell**) | [`opt/open/27-auto-orientation-harmonize.md`](opt/open/27-auto-orientation-harmonize.md) | 🔄 Slice D ✅ |
-| 2 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
+| — | **28** Thumbs Kurzclip + QR-Delete-Stabilität (A+B Code ✅; manuell) | [`opt/open/28-thumb-delete-stability.md`](opt/open/28-thumb-delete-stability.md) | ✅ Code |
+| 2 | **27** Auto-Concat Orientierung (Slice 0–D ✅ Code; **E manuell**) | [`opt/open/27-auto-orientation-harmonize.md`](opt/open/27-auto-orientation-harmonize.md) | 🔄 Slice D ✅ |
+| 3 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
 | — | **24** Kaltstart + UI-Responsiveness (A–F Code ✅) | [`opt/open/24-startup-ui-responsiveness.md`](opt/open/24-startup-ui-responsiveness.md) | ✅ Code |
 | — | **23** SMB-Stabilität (A–F Code ✅; manuell macOS/Linux offen) | [`opt/open/23-smb-stability.md`](opt/open/23-smb-stability.md) | ✅ Code |
 | done | **0–20, 22** Import, Thumbs, SMB, … | [`opt/ARCHIVE.md`](opt/ARCHIVE.md) | ✅ (OPT-13 entfernt) |
@@ -77,6 +79,7 @@
 | OPT-25 | SD-Import: History-Progress + Hash-Reuse nach Backup | hoch | M | niedrig | OPT-3, 12 | [open/25](opt/open/25-sd-import-history-progress.md) |
 | OPT-26 | Video-Drehung: Freeze-Fix + Rotation erst beim Export | hoch | S (A) / L (B–D) | niedrig / mittel | Phase 43, 49, OPT-16 | [open/26](opt/open/26-rotation-export.md) |
 | OPT-27 | Auto-Concat: Orientierung harmonisieren (Copy / Partial Bake) | hoch | S (0) / M (A–D) | mittel | Phase 40, OPT-16, OPT-26 | [open/27](opt/open/27-auto-orientation-harmonize.md) |
+| OPT-28 | Video-Thumbs (Kurzclip) + QR-Arbeitskopie-Löschen | mittel | S–M (A/B) | niedrig | OPT-10 | [open/28](opt/open/28-thumb-delete-stability.md) |
 
 ---
 

@@ -21,7 +21,7 @@ ATS sendet **automatisch** (Default **an**, ohne Toast) redigierte Fehlermeldung
 
 | Mit AMS | Ohne AMS, JWT gültig, Cloud erreichbar | Sonst |
 |---------|----------------------------------------|--------|
-| `POST {ams}/v1/diagnostics/events` → Cloud (Server-Key) | `POST {cloud}/api/ats/v1/diagnostics/events` (Bearer JWT) | Lokale **Outbox**, Retry im Hintergrund |
+| `POST {ams}/v1/diagnostics/events` → Cloud `/api/ats/v1/diagnostics/events/bridge` (Server-Key) | `POST {cloud}/api/ats/v1/diagnostics/events` (Bearer JWT) | Lokale **Outbox**, Retry im Hintergrund |
 
 **Kein** manuelles „Problem melden“. User sieht nichts außer lokalem Log.
 

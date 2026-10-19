@@ -324,28 +324,44 @@ pub async fn clear_working_session() -> Result<(), String> {
 
 /// Delete a single file if it belongs to the session working folder.
 #[tauri::command]
-pub async fn delete_working_copy(path: String) -> bool {
+pub async fn delete_working_copy(
+    path: String,
+) -> working_session::DeleteWorkingCopyResult {
     tauri::async_runtime::spawn_blocking(move || delete_working_copy_blocking(path))
         .await
-        .unwrap_or(false)
+        .unwrap_or_else(|e| working_session::DeleteWorkingCopyResult::failed(e.to_string()))
 }
 
-fn delete_working_copy_blocking(path: String) -> bool {
+fn delete_working_copy_blocking(path: String) -> working_session::DeleteWorkingCopyResult {
+    use working_session::{DeleteWorkingCopyResult, DeleteWorkingCopyStatus};
+
     let trimmed = path.trim();
     if trimmed.is_empty() {
-        return false;
+        return DeleteWorkingCopyResult::not_owned();
     }
     let name = file_name(trimmed);
-    let ok = working_session::delete_working_copy(trimmed);
-    if ok {
-        logging::info("import", format!("Arbeitskopie gelöscht: {name}"));
-    } else {
-        logging::warn(
-            "import",
-            format!("Löschen übersprungen (nicht im Arbeitsordner): {name}"),
-        );
+    let result = working_session::delete_working_copy(trimmed);
+    match result.status {
+        DeleteWorkingCopyStatus::Deleted => {
+            logging::info("import", format!("Arbeitskopie gelöscht: {name}"));
+        }
+        DeleteWorkingCopyStatus::NotOwned => {
+            logging::info(
+                "import",
+                format!("Löschen übersprungen (nicht im Arbeitsordner): {name}"),
+            );
+        }
+        DeleteWorkingCopyStatus::Failed => {
+            logging::warn(
+                "import",
+                format!(
+                    "Arbeitskopie nicht gelöscht ({name}): {}",
+                    result.reason.as_deref().unwrap_or("unknown")
+                ),
+            );
+        }
     }
-    ok
+    result
 }
 
 /// Batch-delete working copies on a blocking pool (clear list / clear tab).
@@ -361,7 +377,7 @@ pub async fn delete_working_copies(paths: Vec<String>) -> Result<usize, String> 
             if trimmed.is_empty() {
                 continue;
             }
-            if working_session::delete_working_copy(trimmed) {
+            if working_session::delete_working_copy(trimmed).is_deleted() {
                 deleted += 1;
             }
         }

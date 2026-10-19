@@ -40,6 +40,8 @@ type VideoListState = {
   rotations: Record<string, ClipRotation>;
   addVideos: (paths: string[]) => Promise<void>;
   removeVideo: (path: string) => void;
+  /** Drop from UI/state only (disk delete handled separately). */
+  removeVideoFromList: (path: string) => void;
   reorderVideos: (activePath: string, overPath: string) => void;
   /** Stable reorder by column (preserves watermark by path). */
   sortVideos: (key: VideoSortKey, ascending: boolean) => void;
@@ -159,7 +161,7 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     }
   },
 
-  removeVideo: (path: string) => {
+  removeVideoFromList: (path: string) => {
     const list = get().videoList;
     const idx = list.findIndex((v) => v.path === path);
     const next = list.filter((v) => v.path !== path);
@@ -173,8 +175,12 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     const { [k]: _r, ...mediaRevision } = get().mediaRevision;
     const { [k]: _rot, ...rotations } = get().rotations;
     set({ videoList: next, watermarkClipIndex: wm, cutMarks, mediaRevision, rotations });
-    void deleteWorkingCopy(path);
     if (next.length === 0) syncProductsFromMedia();
+  },
+
+  removeVideo: (path: string) => {
+    get().removeVideoFromList(path);
+    void deleteWorkingCopy(path);
   },
 
   reorderVideos: (activePath: string, overPath: string) => {

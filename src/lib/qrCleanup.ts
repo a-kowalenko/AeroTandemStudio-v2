@@ -6,7 +6,8 @@ import { usePhotoStore } from "@/store/photoStore";
 import { useVideoStore } from "@/store/videoStore";
 import { useQrScanStore } from "@/store/qrScanStore";
 import { QR_LIVE_REMOVED_EXIT_MS } from "@/lib/qrLivePresent";
-import { scanQrPhotoFollowups } from "@/lib/tauri";
+import { deleteWorkingCopy, scanQrPhotoFollowups } from "@/lib/tauri";
+import { previewThumbnailQueue } from "@/lib/thumbnailQueue";
 
 export type QrCleanupResult = {
   removedVideos: string[];
@@ -49,10 +50,10 @@ function removePhotosByPaths(paths: string[]): string[] {
  * After a successful video QR scan: remove the source clip from the list if
  * `qr_remove_video_after_scan` is on and duration ≤ max (default 10s).
  */
-export function maybeRemoveQrVideo(
+export async function maybeRemoveQrVideo(
   sourcePath: string | null | undefined,
   options?: { onBeforeRemove?: (path: string) => void },
-): QrCleanupResult {
+): Promise<QrCleanupResult> {
   const result: QrCleanupResult = { removedVideos: [], removedPhotos: [] };
   if (!sourcePath) return result;
 
@@ -82,7 +83,16 @@ export function maybeRemoveQrVideo(
   }
 
   options?.onBeforeRemove?.(video.path);
-  useVideoStore.getState().removeVideo(video.path);
+  await previewThumbnailQueue.awaitIdleForPath(video.path, 5000);
+  const del = await deleteWorkingCopy(video.path);
+  if (del.status !== "deleted") {
+    console.warn(
+      `QR-Video bleibt in Liste (Arbeitskopie nicht gelöscht): ${video.filename}`,
+      del.reason ?? del.status,
+    );
+    return result;
+  }
+  useVideoStore.getState().removeVideoFromList(video.path);
   result.removedVideos.push(video.path);
   return result;
 }

@@ -9,9 +9,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 
 use crate::media::datetime::{
     build_chrono_photo_filename_sequenced, build_chrono_photo_filename_sequenced_with_instant,
@@ -27,6 +28,62 @@ static WORKING_SESSION: Lazy<Mutex<WorkingSession>> =
     Lazy::new(|| Mutex::new(WorkingSession::default()));
 
 static WORKING_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeleteWorkingCopyStatus {
+    Deleted,
+    NotOwned,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeleteWorkingCopyResult {
+    pub status: DeleteWorkingCopyStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl DeleteWorkingCopyResult {
+    pub fn deleted() -> Self {
+        Self {
+            status: DeleteWorkingCopyStatus::Deleted,
+            reason: None,
+        }
+    }
+
+    pub fn not_owned() -> Self {
+        Self {
+            status: DeleteWorkingCopyStatus::NotOwned,
+            reason: None,
+        }
+    }
+
+    pub fn failed(reason: impl Into<String>) -> Self {
+        Self {
+            status: DeleteWorkingCopyStatus::Failed,
+            reason: Some(reason.into()),
+        }
+    }
+
+    pub fn is_deleted(&self) -> bool {
+        self.status == DeleteWorkingCopyStatus::Deleted
+    }
+}
+
+fn is_transient_delete_lock(err: &io::Error) -> bool {
+    #[cfg(windows)]
+    {
+        err.raw_os_error() == Some(32)
+    }
+    #[cfg(not(windows))]
+    {
+        matches!(
+            err.kind(),
+            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+        )
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct WorkingSession {
@@ -424,29 +481,52 @@ impl WorkingSession {
     }
 
     /// Delete a file if it lives under the session working folder.
-    pub fn delete_owned_file(&self, path: &Path) -> bool {
+    pub fn delete_owned_file(&self, path: &Path) -> DeleteWorkingCopyResult {
         if !self.is_under_working_dir(path) {
-            return false;
+            return DeleteWorkingCopyResult::not_owned();
         }
-        if path.is_file() {
+        if !path.is_file() {
+            return DeleteWorkingCopyResult::not_owned();
+        }
+
+        const BACKOFF_MS: &[u64] = &[0, 50, 150, 400, 800];
+        let mut last_err: Option<io::Error> = None;
+        for &wait_ms in BACKOFF_MS {
+            if wait_ms > 0 {
+                std::thread::sleep(Duration::from_millis(wait_ms));
+            }
             match fs::remove_file(path) {
                 Ok(()) => {
                     logging::info(
                         "import",
                         format!("Arbeitskopie entfernt: {}", file_name(path)),
                     );
-                    return true;
+                    return DeleteWorkingCopyResult::deleted();
+                }
+                Err(e) if is_transient_delete_lock(&e) => {
+                    last_err = Some(e);
                 }
                 Err(e) => {
                     logging::warn(
                         "import",
                         format!("Löschen fehlgeschlagen ({}): {e}", file_name(path)),
                     );
-                    return false;
+                    return DeleteWorkingCopyResult::failed(e.to_string());
                 }
             }
         }
-        false
+
+        let msg = last_err
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "file locked".into());
+        logging::warn(
+            "import",
+            format!(
+                "Löschen fehlgeschlagen ({}): {msg}",
+                file_name(path)
+            ),
+        );
+        DeleteWorkingCopyResult::failed(msg)
     }
 
     /// Remove the entire working directory and clear session state.
@@ -615,8 +695,9 @@ pub fn import_photo_to_session(source: &str) -> Result<PathBuf, WorkingSessionEr
     with_session(|s| s.import_photo(Path::new(source)))?
 }
 
-pub fn delete_working_copy(path: &str) -> bool {
-    with_session(|s| s.delete_owned_file(Path::new(path))).unwrap_or(false)
+pub fn delete_working_copy(path: &str) -> DeleteWorkingCopyResult {
+    with_session(|s| s.delete_owned_file(Path::new(path)))
+        .unwrap_or_else(|e| DeleteWorkingCopyResult::failed(e.to_string()))
 }
 
 /// Remove working-folder copies from a cancelled import batch.
@@ -726,7 +807,7 @@ mod tests {
         let again = session.import_video(&v_dest).unwrap();
         assert_eq!(again, v_dest);
 
-        assert!(session.delete_owned_file(&v_dest));
+        assert!(session.delete_owned_file(&v_dest).is_deleted());
         assert!(!v_dest.is_file());
         // Original untouched
         assert!(video.is_file());
@@ -814,7 +895,10 @@ mod tests {
         let mut session = WorkingSession::default();
         let outside = tempfile::NamedTempFile::new().unwrap();
         let _ = session.ensure_dir().unwrap();
-        assert!(!session.delete_owned_file(outside.path()));
+        assert_eq!(
+            session.delete_owned_file(outside.path()).status,
+            DeleteWorkingCopyStatus::NotOwned
+        );
         assert!(outside.path().is_file());
         session.clear();
     }

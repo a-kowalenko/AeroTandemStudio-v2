@@ -1,6 +1,9 @@
 //! Tauri commands for SD-card monitoring, backup, and import.
 
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
+
+use once_cell::sync::Lazy;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -26,6 +29,19 @@ use crate::sd_card::secondary_backup::{
 use crate::storage::logging;
 use crate::storage::media_history::ProcessedFileEntry;
 use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, is_cancelled, WORKFLOW_CANCELLED};
+
+static THUMB_WARN_ONCE: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+
+fn log_thumbnail_failure(path: &str, quality: ThumbQuality, msg: &str) {
+    let key = format!("{}:{}", quality.as_str(), path);
+    let first = THUMB_WARN_ONCE
+        .lock()
+        .map(|mut g| g.insert(key))
+        .unwrap_or(true);
+    if first {
+        logging::warn("thumb", format!("Thumbnail fehlgeschlagen ({path}): {msg}"));
+    }
+}
 
 fn is_backup_cancel_msg(msg: &str) -> bool {
     is_cancelled() || msg.trim() == WORKFLOW_CANCELLED || {
@@ -490,7 +506,7 @@ pub async fn get_media_thumbnail(
                 Ok(cached) => thumbnail_result_from_cache(&path, &media_server, cached.cache_path),
                 Err(e) => {
                     let msg = e.to_string();
-                    logging::warn("thumb", format!("Thumbnail fehlgeschlagen ({path}): {msg}"));
+                    log_thumbnail_failure(&path, q, &msg);
                     Err(msg)
                 }
             }

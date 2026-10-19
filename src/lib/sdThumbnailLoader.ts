@@ -24,6 +24,12 @@ const FLUSH_MS = 80;
 /** MTP retry backoff: 400, 800, 1600, 3200 ms (device busy / session warming up). */
 const ICA_RETRY_BASE_MS = 400;
 const ICA_MAX_RETRIES = 4;
+/** Local disk / mapped paths: stop hammering FFmpeg after a few failures (OPT-28). */
+const LOCAL_MAX_RETRIES = 2;
+const LOCAL_RETRY_DELAY_MS = 300;
+
+/** flightKey paths that exhausted retries — cleared by {@link forgetThumbs}. */
+const permanentFailed = new Set<string>();
 
 function isMtpVirtualPath(path: string): boolean {
   return (
@@ -53,6 +59,10 @@ export function forgetThumbs(match: (path: string) => boolean): void {
     if (!match(path)) continue;
     memoryCache.delete(key);
     paths.add(path);
+  }
+  for (const fk of [...permanentFailed]) {
+    const path = fk.slice(fk.indexOf(":") + 1);
+    if (match(path)) permanentFailed.delete(fk);
   }
   if (paths.size === 0) return;
   for (const loader of activeLoaders) loader.handleForgotten(paths);
@@ -225,6 +235,7 @@ export class SdThumbnailLoader {
 
   private enqueue(path: string, quality: ThumbQualityLevel, priority: number) {
     const key = flightKey(path, quality);
+    if (permanentFailed.has(key)) return;
     if (quality === "lq") {
       const best = bestCached(path);
       if (best) {
@@ -286,26 +297,30 @@ export class SdThumbnailLoader {
         this.publish(item.path, state);
       }
     } catch {
-      // Missing SD/MTP thumbs are expected (icons stay); retry while the
-      // catalog session / WPD device is still coming up.
+      const ica = isMtpVirtualPath(item.path);
+      const maxRetries = ica ? ICA_MAX_RETRIES : LOCAL_MAX_RETRIES;
       if (
-        isMtpVirtualPath(item.path) &&
-        item.retries < ICA_MAX_RETRIES &&
+        item.retries < maxRetries &&
         !this.stopped &&
         gen === this.generation
       ) {
+        const delayMs = ica
+          ? ICA_RETRY_BASE_MS * 2 ** item.retries
+          : LOCAL_RETRY_DELAY_MS;
         window.setTimeout(() => {
           if (this.stopped || gen !== this.generation) return;
           if (!this.visible.has(item.path)) return;
-          const key = flightKey(item.path, item.quality);
-          if (this.inFlight.has(key) || this.pending.has(key)) return;
-          this.pending.set(key, {
+          const retryKey = flightKey(item.path, item.quality);
+          if (this.inFlight.has(retryKey) || this.pending.has(retryKey)) return;
+          this.pending.set(retryKey, {
             ...item,
             retries: item.retries + 1,
             priority: Math.max(1, item.priority - 1),
           });
           this.pump();
-        }, ICA_RETRY_BASE_MS * 2 ** item.retries);
+        }, delayMs);
+      } else if (!ica) {
+        permanentFailed.add(key);
       }
     } finally {
       this.inFlight.delete(key);

@@ -800,9 +800,16 @@ export async function clearWorkingSession(): Promise<void> {
   return invoke("clear_working_session");
 }
 
+export type DeleteWorkingCopyStatus = "deleted" | "not_owned" | "failed";
+
+export type DeleteWorkingCopyResult = {
+  status: DeleteWorkingCopyStatus;
+  reason?: string;
+};
+
 /** Delete one file if it belongs to the session working folder. */
-export async function deleteWorkingCopy(path: string): Promise<boolean> {
-  return invoke<boolean>("delete_working_copy", { path });
+export async function deleteWorkingCopy(path: string): Promise<DeleteWorkingCopyResult> {
+  return invoke<DeleteWorkingCopyResult>("delete_working_copy", { path });
 }
 
 /** Batch-delete working copies (blocking pool; keeps UI responsive). */
